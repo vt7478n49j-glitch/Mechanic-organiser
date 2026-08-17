@@ -1,3 +1,3 @@
-Mechanic Mate v6
+Mechanic Mate v7
 
-Restores/prominently exposes job time entry and Add / Select Parts workflow while keeping v5 logo and printable/shareable invoice features.
+Changes: labour is calculated automatically from time x hourly rate; saved parts are directly selectable with checkboxes from each job; manual new parts are still saved to Parts and linked to the job.
