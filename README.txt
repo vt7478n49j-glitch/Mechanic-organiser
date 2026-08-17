@@ -1,5 +1,3 @@
-Mechanic Mate v5
+Mechanic Mate v6
 
-Adds company name/logo settings, logo in app header, customer email field, and branded invoice view with print/save-PDF and share/email actions.
-
-Upload all files to the root of your GitHub Pages repository, replacing the previous versions.
+Restores/prominently exposes job time entry and Add / Select Parts workflow while keeping v5 logo and printable/shareable invoice features.
