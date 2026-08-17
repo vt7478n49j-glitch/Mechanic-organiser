@@ -1,3 +1,4 @@
-Mechanic Mate v7
+Mechanic Mate v8
 
-Changes: labour is calculated automatically from time x hourly rate; saved parts are directly selectable with checkboxes from each job; manual new parts are still saved to Parts and linked to the job.
+Fixes iPhone PWA invoice View/Print and Share/Email behaviour.
+Invoice now opens inside the app with a Back button.
