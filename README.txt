@@ -1,3 +1,5 @@
-Mechanic Mate v11
-
-Invoice images now use an iPhone-safe data URL renderer instead of canvas.toBlob().
+Mechanic Mate v12
+- iPhone date input width fix
+- Invoice preview generated as SVG image (no canvas dependency)
+- Share sheet with fallback preview / email
+- Cache bumped to v12
