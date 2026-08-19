@@ -1,2 +1,2 @@
-Mechanic Mate v16
-Invoice buttons repaired after JavaScript syntax-error diagnosis.
+Mechanic Mate v17
+Customer vehicle details, part quantities, itemised invoice parts, business phone/email and Billed To section.

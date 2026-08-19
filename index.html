@@ -21,7 +21,27 @@
  #invoicePrintHost .inline-actions{display:none!important}
  #invoicePrintHost .inline-invoice{display:block!important;margin:0;border-radius:0}
 }
-</style></head><body>
+</style>
+<style>
+.vehicle-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.vehicle-grid>*{min-width:0}
+.qty-input{width:76px!important;margin:0!important;text-align:center}
+.invoice-contact{font-size:12px;line-height:1.55;margin-top:5px}
+.inline-invoice .bill-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:16px 0}
+.inline-invoice .bill-box{border-top:2px solid #111;padding-top:8px;font-size:13px;line-height:1.55}
+.inline-invoice .parts-table th:nth-child(2),.inline-invoice .parts-table td:nth-child(2){text-align:center;width:52px}
+.inline-invoice .parts-table th:nth-child(3),.inline-invoice .parts-table td:nth-child(3),
+.inline-invoice .parts-table th:nth-child(4),.inline-invoice .parts-table td:nth-child(4){text-align:right;white-space:nowrap}
+.inline-invoice .parts-subtotal td{font-weight:800;border-top:2px solid #aaa}
+@media(max-width:520px){
+  .vehicle-grid,.inline-invoice .bill-grid{grid-template-columns:1fr}
+  .inline-invoice{padding:14px}
+  .inline-invoice table{font-size:12px}
+  .inline-invoice th,.inline-invoice td{padding:8px 3px;font-size:12px}
+}
+</style>
+
+</head><body>
 <div class="topbar"><div class="brandtext"><h1>🔧 Mechanic Mate</h1><div class="sub">Private mobile mechanic job manager</div></div><img id="headerLogo" class="app-logo hidden" alt="Company logo"></div><div id="nav" class="nav"></div><main id="app"></main><div id="modal"></div>
 <script>
 const KEY='mechanic-mate-v2';
@@ -266,6 +286,625 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       '?subject=' + encodeURIComponent(subject) +
       '&body=' + encodeURIComponent(body);
   };
+})();
+</script>
+
+
+<script>
+(function(){
+  // ---------- v17 data migration ----------
+  db.settings = db.settings || {};
+  if (db.settings.companyPhone == null) db.settings.companyPhone = '';
+  if (db.settings.companyEmail == null) db.settings.companyEmail = '';
+
+  db.customers = (db.customers || []).map(function(c){
+    if (c.reg == null) c.reg = '';
+    if (c.make == null) c.make = '';
+    if (c.model == null) c.model = '';
+    if (c.engineSize == null) c.engineSize = '';
+    // Preserve the old free-text vehicle field.
+    if (!c.reg && c.vehicle) c.reg = c.vehicle;
+    return c;
+  });
+
+  db.jobs = (db.jobs || []).map(function(j){
+    j.partIds = Array.isArray(j.partIds) ? j.partIds : [];
+    j.partQuantities = j.partQuantities && typeof j.partQuantities === 'object' ? j.partQuantities : {};
+    j.partIds.forEach(function(id){
+      if (!(id in j.partQuantities)) j.partQuantities[id] = 1;
+    });
+    if (j.make == null) j.make = '';
+    if (j.model == null) j.model = '';
+    if (j.engineSize == null) j.engineSize = '';
+    return j;
+  });
+
+  function customerByName(name){
+    return (db.customers || []).find(function(c){ return c.name === name; }) || {};
+  }
+
+  function jobPartLines(j){
+    if (!j) return [];
+    return (j.partIds || []).map(function(id){
+      var part = (db.parts || []).find(function(p){ return p.id === id; });
+      if (!part) return null;
+      var qty = Number((j.partQuantities || {})[id] || 1);
+      if (!Number.isFinite(qty) || qty <= 0) qty = 1;
+      var unit = Number(part.charge != null ? part.charge : part.cost || 0);
+      return {
+        partId: part.id,
+        name: part.name || 'Part',
+        qty: qty,
+        unitPrice: unit,
+        total: qty * unit,
+        cost: Number(part.cost || 0),
+        supplier: part.supplier || ''
+      };
+    }).filter(Boolean);
+  }
+  window.jobPartLines = jobPartLines;
+
+  function vehicleText(c){
+    var bits = [c.make, c.model].filter(Boolean);
+    var first = bits.join(' ');
+    var detail = [c.engineSize, c.reg].filter(Boolean).join(' • ');
+    return [first, detail].filter(Boolean).join(' — ');
+  }
+
+  // ---------- Customers ----------
+  customers = function(){
+    return '<div class="row"><h2>Customers</h2><button class="primary" onclick="customerForm()">＋ Add</button></div>' +
+      ((db.customers || []).map(function(c){
+        var vehicle = vehicleText(c) || c.vehicle || '';
+        return '<div class="card"><b>' + esc(c.name) + '</b>' +
+          '<div class="muted">' +
+            (c.phone ? esc(c.phone) : '') +
+            (c.email ? '<br>' + esc(c.email) : '') +
+            (vehicle ? '<br><b>Vehicle:</b> ' + esc(vehicle) : '') +
+            (c.address ? '<br>' + esc(c.address) : '') +
+          '</div><div class="actions">' +
+          '<button onclick="customerForm(\'' + c.id + '\')">Edit</button>' +
+          '<button class="danger" onclick="del(\'customers\',\'' + c.id + '\')">Delete</button>' +
+          '</div></div>';
+      }).join('') || '<div class="empty">No customers.</div>');
+  };
+
+  customerOptions = function(selected){
+    selected = selected || '';
+    return '<option value="">— Select customer —</option>' +
+      (db.customers || []).map(function(c){
+        var v = vehicleText(c);
+        return '<option value="' + esc(c.name) + '" ' + (c.name === selected ? 'selected' : '') + '>' +
+          esc(c.name) + (v ? ' • ' + esc(v) : '') + '</option>';
+      }).join('');
+  };
+
+  customerForm = function(id){
+    var c = (db.customers || []).find(function(x){ return x.id === id; }) || {};
+    openModal(id ? 'Edit Customer' : 'New Customer',
+      '<label>Name</label><input id="cn" value="' + esc(c.name || '') + '">' +
+      '<div class="two"><div><label>Phone</label><input id="cp" type="tel" value="' + esc(c.phone || '') + '"></div>' +
+      '<div><label>Email</label><input id="ce" type="email" value="' + esc(c.email || '') + '"></div></div>' +
+      '<h3 style="margin-bottom:5px">Vehicle details</h3>' +
+      '<label>Registration</label><input id="creg" value="' + esc(c.reg || c.vehicle || '') + '" placeholder="AB12 CDE">' +
+      '<div class="vehicle-grid"><div><label>Make</label><input id="cmake" value="' + esc(c.make || '') + '" placeholder="Volkswagen"></div>' +
+      '<div><label>Model</label><input id="cmodel" value="' + esc(c.model || '') + '" placeholder="Passat"></div></div>' +
+      '<label>Engine size / engine</label><input id="cengine" value="' + esc(c.engineSize || '') + '" placeholder="e.g. 1.9 TDI">' +
+      '<label>Address</label><textarea id="ca">' + esc(c.address || '') + '</textarea>' +
+      '<button class="primary" onclick="saveCustomer(\'' + (id || '') + '\')">Save</button>'
+    );
+  };
+
+  saveCustomer = function(id){
+    var old = (db.customers || []).find(function(x){ return x.id === id; }) || {};
+    var x = {
+      ...old,
+      id: id || gid(),
+      name: cn.value,
+      phone: cp.value,
+      email: ce.value,
+      reg: creg.value,
+      make: cmake.value,
+      model: cmodel.value,
+      engineSize: cengine.value,
+      vehicle: creg.value,
+      address: ca.value
+    };
+    var i = db.customers.findIndex(function(y){ return y.id === x.id; });
+    if (i < 0) db.customers.push(x); else db.customers[i] = x;
+    save(); closeM(); render();
+  };
+
+  // ---------- Jobs / vehicle autofill ----------
+  window.fillJobCustomer = function(name){
+    var c = customerByName(name);
+    var n = document.getElementById('jcmanual');
+    if (n) n.value = name || '';
+    var reg = document.getElementById('jr');
+    var make = document.getElementById('jmake');
+    var model = document.getElementById('jmodel');
+    var engine = document.getElementById('jengine');
+    if (reg) reg.value = c.reg || c.vehicle || '';
+    if (make) make.value = c.make || '';
+    if (model) model.value = c.model || '';
+    if (engine) engine.value = c.engineSize || '';
+  };
+
+  jobForm = function(id){
+    var j = (db.jobs || []).find(function(x){ return x.id === id; }) || {};
+    var lines = jobPartLines(j);
+    openModal(id ? 'Edit Job' : 'New Job',
+      '<label>Job title</label><input id="jt" value="' + esc(j.title || '') + '">' +
+      '<label>Customer</label><select id="jcsel" onchange="fillJobCustomer(this.value)">' + customerOptions(j.customer || '') + '</select>' +
+      '<label>Customer name (or type manually)</label><input id="jcmanual" value="' + esc(j.customer || '') + '">' +
+      '<label>Registration</label><input id="jr" value="' + esc(j.reg || '') + '">' +
+      '<div class="vehicle-grid"><div><label>Make</label><input id="jmake" value="' + esc(j.make || '') + '"></div>' +
+      '<div><label>Model</label><input id="jmodel" value="' + esc(j.model || '') + '"></div></div>' +
+      '<label>Engine size / engine</label><input id="jengine" value="' + esc(j.engineSize || '') + '">' +
+      '<label>Date</label><input id="jd" class="date-safe" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="' + esc(j.date || new Date().toISOString().slice(0,10)) + '">' +
+      '<label>Status</label><select id="js"><option>Open</option><option>Booked</option><option>In progress</option><option>Complete</option><option>Invoiced</option><option>Paid</option><option>Cancelled</option></select>' +
+      '<label>Time spent on job (hours)</label><input id="jh" type="number" inputmode="decimal" min="0" step="0.25" value="' + Number(j.hours || 0) + '" placeholder="e.g. 1.5">' +
+      '<div class="muted" style="margin-top:-6px;margin-bottom:10px">Labour is calculated automatically using your hourly rate in Settings.</div>' +
+      '<label>Location</label><input id="jl" value="' + esc(j.location || '') + '">' +
+      '<label>Notes</label><textarea id="jn">' + esc(j.notes || '') + '</textarea>' +
+      (id ? '<div class="card"><div class="row"><b>Linked parts</b><button class="primary" onclick="jobPartsMenu(\'' + id + '\')">＋ Add / Select Parts</button></div>' +
+        (lines.map(function(line){
+          return '<div class="partline row"><span>' + esc(line.name) + ' × ' + line.qty + '</span><span>' + money(line.total) + '</span></div>';
+        }).join('') || '<div class="muted">No parts linked yet.</div>') + '</div>' : '') +
+      '<button class="primary" onclick="saveJob(\'' + (id || '') + '\')">Save job</button>'
+    );
+    if (j.status && document.getElementById('js')) js.value = j.status;
+  };
+
+  saveJob = function(id){
+    var old = (db.jobs || []).find(function(y){ return y.id === id; }) || {};
+    var x = {
+      ...old,
+      id: id || gid(),
+      title: jt.value,
+      customer: jcmanual.value,
+      reg: jr.value,
+      make: jmake.value,
+      model: jmodel.value,
+      engineSize: jengine.value,
+      date: jd.value,
+      status: js.value,
+      location: jl.value,
+      notes: jn.value,
+      hours: Number(jh.value || 0),
+      partIds: old.partIds || [],
+      partQuantities: old.partQuantities || {}
+    };
+    var i = db.jobs.findIndex(function(y){ return y.id === x.id; });
+    if (i < 0) db.jobs.push(x); else db.jobs[i] = x;
+    save(); closeM(); render();
+  };
+
+  // ---------- Parts / per-job quantity ----------
+  partForm = function(id, linkJobId){
+    id = id || ''; linkJobId = linkJobId || '';
+    var p = (db.parts || []).find(function(x){ return x.id === id; }) || {};
+    var qty = 1;
+    if (linkJobId) {
+      var j = (db.jobs || []).find(function(x){ return x.id === linkJobId; });
+      qty = Number(j && j.partQuantities && j.partQuantities[p.id] || 1);
+    }
+    openModal(id ? 'Edit Part' : 'Add Part',
+      '<label>Part / expense</label><input id="pn" value="' + esc(p.name || '') + '">' +
+      '<div class="two"><div><label>Your cost (£ each)</label><input id="pc" type="number" min="0" step="0.01" value="' + Number(p.cost || 0) + '"></div>' +
+      '<div><label>Customer charge (£ each)</label><input id="pch" type="number" min="0" step="0.01" value="' + Number(p.charge != null ? p.charge : p.cost || 0) + '"></div></div>' +
+      '<label>Supplier</label><input id="ps" value="' + esc(p.supplier || '') + '">' +
+      (linkJobId ? '<label>Quantity used on this job</label><input id="pqty" type="number" min="1" step="1" value="' + qty + '">' : '') +
+      '<button class="primary" onclick="savePart(\'' + id + '\',\'' + linkJobId + '\')">Save' + (linkJobId ? ' & link to job' : '') + '</button>'
+    );
+  };
+
+  savePart = function(id, linkJobId){
+    var old = (db.parts || []).find(function(y){ return y.id === id; }) || {};
+    var x = {
+      ...old,
+      id: id || gid(),
+      name: pn.value,
+      cost: Number(pc.value || 0),
+      charge: Number(pch.value || 0),
+      supplier: ps.value
+    };
+    var i = db.parts.findIndex(function(y){ return y.id === x.id; });
+    if (i < 0) db.parts.push(x); else db.parts[i] = x;
+
+    if (linkJobId) {
+      var j = db.jobs.find(function(y){ return y.id === linkJobId; });
+      if (j) {
+        j.partIds = Array.isArray(j.partIds) ? j.partIds : [];
+        j.partQuantities = j.partQuantities || {};
+        if (!j.partIds.includes(x.id)) j.partIds.push(x.id);
+        j.partQuantities[x.id] = Math.max(1, Number((document.getElementById('pqty') || {}).value || 1));
+      }
+    }
+    save(); closeM(); render();
+  };
+
+  jobPartsMenu = function(jobId){
+    var j = (db.jobs || []).find(function(x){ return x.id === jobId; });
+    if (!j) return;
+    var linked = new Set(j.partIds || []);
+    var q = j.partQuantities || {};
+    var body = '<p class="muted">' + esc(jobLabel(j)) + '</p><div class="card"><b>Select saved parts</b>' +
+      '<p class="muted">Tick a saved part and set how many were used on this job.</p>';
+
+    if (db.parts.length) {
+      body += db.parts.map(function(p){
+        var checked = linked.has(p.id);
+        var qty = Math.max(1, Number(q[p.id] || 1));
+        return '<div style="display:grid;grid-template-columns:28px 1fr 76px;gap:9px;align-items:center;padding:10px 0;border-top:1px solid var(--line)">' +
+          '<input type="checkbox" class="jobPartCheck" value="' + p.id + '" ' + (checked ? 'checked' : '') + ' style="width:22px;height:22px;margin:0">' +
+          '<div><b>' + esc(p.name) + '</b><br><span class="muted">Each ' + money(p.charge != null ? p.charge : p.cost) + ' • Cost ' + money(p.cost) + '</span></div>' +
+          '<div><label>Qty</label><input class="jobPartQty qty-input" data-part-id="' + p.id + '" type="number" min="1" step="1" value="' + qty + '"></div>' +
+          '</div>';
+      }).join('');
+    } else {
+      body += '<div class="empty">You have no saved parts yet.</div>';
+    }
+
+    body += '<button class="primary" style="width:100%;margin-top:10px" onclick="saveJobPartSelection(\'' + jobId + '\')">Save selected parts</button></div>' +
+      '<button style="width:100%;margin-top:10px" onclick="partForm(\'\',\'' + jobId + '\')">＋ Add a new part manually</button>' +
+      '<p class="muted">New manual parts are saved in the Parts tab and linked to this job automatically.</p>';
+    openModal('Parts for this job', body);
+  };
+
+  saveJobPartSelection = function(jobId){
+    var j = (db.jobs || []).find(function(x){ return x.id === jobId; });
+    if (!j) return;
+    var checks = Array.from(document.querySelectorAll('.jobPartCheck:checked'));
+    j.partIds = checks.map(function(x){ return x.value; });
+    j.partQuantities = {};
+    checks.forEach(function(ch){
+      var qInput = document.querySelector('.jobPartQty[data-part-id="' + ch.value + '"]');
+      j.partQuantities[ch.value] = Math.max(1, Number(qInput && qInput.value || 1));
+    });
+    save(); closeM(); render();
+  };
+
+  parts = function(){
+    return '<div class="row"><h2>Parts</h2><button class="primary" onclick="partForm()">＋ Add</button></div>' +
+      ((db.parts || []).slice().reverse().map(function(p){
+        var uses = (db.jobs || []).filter(function(j){ return (j.partIds || []).includes(p.id); });
+        var usage = uses.length ? uses.map(function(j){
+          return esc(j.title || j.reg || 'Job') + ' × ' + Math.max(1, Number((j.partQuantities || {})[p.id] || 1));
+        }).join(', ') : 'Not linked to a job';
+        return '<div class="card"><div class="row"><b>' + esc(p.name) + '</b><span class="price">' + money(p.charge != null ? p.charge : p.cost) + ' each</span></div>' +
+          '<div class="muted">Cost ' + money(p.cost) + (p.supplier ? ' • ' + esc(p.supplier) : '') + '</div>' +
+          '<div class="muted">' + (uses.length ? 'Used on: ' : '') + usage + '</div>' +
+          '<div class="actions"><button onclick="partForm(\'' + p.id + '\')">Edit</button><button class="danger" onclick="deletePart(\'' + p.id + '\')">Delete</button></div></div>';
+      }).join('') || '<div class="empty">No parts.</div>');
+  };
+
+  // ---------- Settings ----------
+  settings = function(){
+    return '<h2>Settings</h2>' +
+      '<div class="card"><b>Business details</b><p class="muted">These details are used automatically on invoices and emails.</p>' +
+      '<label>Company name</label><input id="companyName" value="' + esc(db.settings.companyName || '') + '" placeholder="e.g. Roadside Auto Solutions">' +
+      '<div class="two"><div><label>Company phone number</label><input id="companyPhone" type="tel" value="' + esc(db.settings.companyPhone || '') + '"></div>' +
+      '<div><label>Company email address</label><input id="companyEmail" type="email" value="' + esc(db.settings.companyEmail || '') + '"></div></div>' +
+      '<label>Company logo</label>' +
+      (db.settings.companyLogo ? '<div style="margin:8px 0"><img class="logo-preview" src="' + db.settings.companyLogo + '" alt="Logo preview"></div>' : '<div class="muted" style="margin:8px 0">No logo uploaded yet.</div>') +
+      '<input id="logoUpload" type="file" accept="image/*" onchange="handleLogoUpload(event)">' +
+      '<div class="actions"><button class="primary" onclick="saveBusinessSettings()">Save business details</button>' +
+      (db.settings.companyLogo ? '<button class="danger" onclick="removeLogo()">Remove logo</button>' : '') + '</div></div>' +
+      '<div class="card"><b>Labour rate</b><p class="muted">Used automatically when you enter hours on a job.</p>' +
+      '<label>Hourly charge (£)</label><input id="rate" type="number" min="0" step="0.01" value="' + Number(db.settings.hourlyRate || 0) + '">' +
+      '<button class="primary" onclick="db.settings.hourlyRate=Number(rate.value||0);save();alert(\'Hourly rate saved\')">Save rate</button></div>' +
+      '<div class="card"><b>Backup</b><p class="muted">Export your data regularly. Your logo and business details are included.</p>' +
+      '<button class="primary" onclick="exportData()">Export backup</button> <button onclick="imp.click()">Import</button>' +
+      '<input id="imp" type="file" accept=".json" style="display:none" onchange="importData(event)"></div>' +
+      '<div class="card"><b>Reset</b><p class="muted">Delete everything stored on this device.</p><button class="danger" onclick="resetData()">Delete all data</button></div>';
+  };
+
+  saveBusinessSettings = function(){
+    db.settings.companyName = companyName.value.trim();
+    db.settings.companyPhone = companyPhone.value.trim();
+    db.settings.companyEmail = companyEmail.value.trim();
+    save(); render(); alert('Business details saved');
+  };
+
+  // ---------- Invoice creation ----------
+  function invoicePartSnapshot(j){
+    return jobPartLines(j).map(function(line){
+      return {
+        partId: line.partId,
+        name: line.name,
+        qty: line.qty,
+        unitPrice: line.unitPrice,
+        total: line.total
+      };
+    });
+  }
+
+  function partSummaryHtml(j){
+    var lines = jobPartLines(j);
+    if (!lines.length) return '<div class="muted">No parts linked to this job.</div>';
+    return lines.map(function(line){
+      return '<div class="partline row"><span>' + esc(line.name) + ' × ' + line.qty + '</span><span>' + money(line.total) + '</span></div>';
+    }).join('');
+  }
+
+  invoiceForm = function(jobId){
+    jobId = jobId || '';
+    var j = db.jobs.find(function(x){ return x.id === jobId; }) || null;
+    var lines = jobPartLines(j);
+    var partsTotal = lines.reduce(function(a,x){ return a + x.total; }, 0);
+    var hours = j ? Number(j.hours || 0) : 0;
+    var rate = Number(db.settings.hourlyRate || 0);
+    var labour = hours * rate;
+    var c = customerByName(j && j.customer || '');
+    var jobsOpt = '<option value="">— No linked job —</option>' +
+      db.jobs.slice().reverse().map(function(x){
+        return '<option value="' + x.id + '" ' + (x.id === jobId ? 'selected' : '') + '>' + esc(jobLabel(x)) + '</option>';
+      }).join('');
+
+    openModal('New Invoice',
+      '<label>Recent job</label><select id="ivjob" onchange="fillInvoiceFromJob()">' + jobsOpt + '</select>' +
+      '<label>Customer</label><select id="ivcustsel" onchange="fillInvoiceCustomer(this.value)">' + customerOptions(j && j.customer || '') + '</select>' +
+      '<label>Customer name</label><input id="ivc" value="' + esc(j && j.customer || '') + '">' +
+      '<label>Customer email</label><input id="ive" type="email" value="' + esc(c.email || '') + '">' +
+      '<label>Invoice number</label><input id="ivn" value="INV-' + String(db.invoices.length + 1).padStart(4,'0') + '">' +
+      '<label>Date</label><input id="ivd" class="date-safe" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="' + new Date().toISOString().slice(0,10) + '">' +
+      '<label>Time spent on job (hours)</label><input id="ivhours" type="number" inputmode="decimal" min="0" step="0.25" value="' + hours + '" oninput="recalcInvoiceLabour()" placeholder="e.g. 1.5">' +
+      '<div class="muted" style="margin-top:-6px;margin-bottom:10px">Hourly rate: ' + money(rate) + ' / hour. Labour is calculated automatically.</div>' +
+      '<label>Labour (£) — calculated automatically</label><input id="ivl" type="number" step="0.01" value="' + labour.toFixed(2) + '" readonly style="opacity:.8">' +
+      '<label>Parts used</label><div id="ivPartLines" class="card">' + partSummaryHtml(j) + '</div>' +
+      '<label>Parts total (£)</label><input id="ivp" type="number" step="0.01" value="' + partsTotal.toFixed(2) + '" readonly style="opacity:.8">' +
+      '<label>Travel / call-out (£)</label><input id="ivt" type="number" step="0.01" value="0">' +
+      '<label>Other (£)</label><input id="ivo" type="number" step="0.01" value="0">' +
+      '<button class="primary" onclick="saveInvoice()">Save invoice</button>'
+    );
+  };
+
+  window.fillInvoiceCustomer = function(name){
+    var c = customerByName(name);
+    if (document.getElementById('ivc')) ivc.value = name || '';
+    if (document.getElementById('ive')) ive.value = c.email || '';
+  };
+
+  fillCustomerEmail = function(name){
+    var c = customerByName(name);
+    if (document.getElementById('ive')) ive.value = c.email || '';
+  };
+
+  fillInvoiceFromJob = function(){
+    var j = db.jobs.find(function(x){ return x.id === ivjob.value; });
+    if (!j) {
+      ivhours.value = 0;
+      ivl.value = '0.00';
+      ivp.value = '0.00';
+      if (document.getElementById('ivPartLines')) ivPartLines.innerHTML = '<div class="muted">No parts linked to this job.</div>';
+      return;
+    }
+    ivc.value = j.customer || '';
+    if (document.getElementById('ivcustsel')) ivcustsel.value = j.customer || '';
+    fillCustomerEmail(j.customer || '');
+    ivhours.value = Number(j.hours || 0);
+    recalcInvoiceLabour();
+    var lines = jobPartLines(j);
+    ivp.value = lines.reduce(function(a,x){ return a + x.total; }, 0).toFixed(2);
+    if (document.getElementById('ivPartLines')) ivPartLines.innerHTML = partSummaryHtml(j);
+  };
+
+  saveInvoice = function(){
+    recalcInvoiceLabour();
+    var jobId = ivjob.value || '';
+    var j = db.jobs.find(function(x){ return x.id === jobId; }) || null;
+    var c = customerByName(ivc.value);
+    var partLines = invoicePartSnapshot(j);
+    var partTotal = partLines.reduce(function(a,x){ return a + x.total; }, 0);
+    ivp.value = partTotal.toFixed(2);
+
+    var total = Number(ivl.value || 0) + partTotal + Number(ivt.value || 0) + Number(ivo.value || 0);
+    db.invoices.push({
+      id: gid(),
+      number: ivn.value,
+      customer: ivc.value,
+      customerId: c.id || '',
+      email: ive.value,
+      billedTo: {
+        name: ivc.value,
+        phone: c.phone || '',
+        email: ive.value || c.email || '',
+        address: c.address || ''
+      },
+      date: ivd.value,
+      jobId: jobId,
+      hours: Number(ivhours.value || 0),
+      labour: Number(ivl.value || 0),
+      partLines: partLines,
+      parts: partTotal,
+      travel: Number(ivt.value || 0),
+      other: Number(ivo.value || 0),
+      total: total,
+      paid: false
+    });
+    if (j) j.hours = Number(ivhours.value || 0);
+    syncJobPaymentStatus(jobId);
+    save(); closeM(); render();
+  };
+
+  // ---------- Invoice rendering ----------
+  function invoiceLines(i){
+    if (Array.isArray(i.partLines) && i.partLines.length) return i.partLines;
+    var j = (db.jobs || []).find(function(x){ return x.id === i.jobId; });
+    if (j) return invoicePartSnapshot(j);
+    return [];
+  }
+
+  function invoiceCustomer(i){
+    var billed = i.billedTo || {};
+    var current = customerByName(i.customer || '');
+    return {
+      name: billed.name || i.customer || current.name || '',
+      phone: billed.phone || current.phone || '',
+      email: billed.email || i.email || current.email || '',
+      address: billed.address || current.address || ''
+    };
+  }
+
+  function invoiceVehicle(i){
+    var j = (db.jobs || []).find(function(x){ return x.id === i.jobId; }) || {};
+    var c = customerByName(i.customer || '');
+    return {
+      reg: j.reg || c.reg || c.vehicle || '',
+      make: j.make || c.make || '',
+      model: j.model || c.model || '',
+      engineSize: j.engineSize || c.engineSize || '',
+      title: j.title || ''
+    };
+  }
+
+  function invoiceHtmlV17(i){
+    var settings = db.settings || {};
+    var company = settings.companyName || 'Mechanic Mate';
+    var logo = settings.companyLogo || '';
+    var cust = invoiceCustomer(i);
+    var vehicle = invoiceVehicle(i);
+    var lines = invoiceLines(i);
+    var partsSubtotal = lines.reduce(function(a,x){ return a + Number(x.total || (Number(x.qty||1) * Number(x.unitPrice||0))); }, 0);
+    if (!partsSubtotal && Number(i.parts || 0)) partsSubtotal = Number(i.parts || 0);
+
+    var partsRows = lines.map(function(line){
+      var qty = Number(line.qty || 1);
+      var unit = Number(line.unitPrice || 0);
+      var lineTotal = Number(line.total || qty * unit);
+      return '<tr><td>' + esc(line.name || 'Part') + '</td><td>' + qty + '</td><td>' + money(unit) + '</td><td>' + money(lineTotal) + '</td></tr>';
+    }).join('');
+
+    if (!partsRows && partsSubtotal) {
+      partsRows = '<tr><td>Parts</td><td>1</td><td>' + money(partsSubtotal) + '</td><td>' + money(partsSubtotal) + '</td></tr>';
+    }
+
+    var contact = [settings.companyPhone, settings.companyEmail].filter(Boolean).map(esc).join('<br>');
+    var vehicleBits = [vehicle.make, vehicle.model, vehicle.engineSize].filter(Boolean).map(esc).join(' • ');
+
+    return '<div class="inline-invoice">' +
+      '<div class="inv-head"><div>' +
+        (logo ? '<img class="inv-logo" src="' + logo + '" alt="Company logo">' : '') +
+        '<div style="font-weight:900;font-size:20px">' + esc(company) + '</div>' +
+        (contact ? '<div class="invoice-contact">' + contact + '</div>' : '') +
+      '</div><div style="text-align:right"><div class="inv-title">INVOICE</div>' +
+        '<div class="inv-meta">' + esc(i.number || '') + '<br>' + esc(i.date || '') + '</div>' +
+        '<div style="margin-top:7px;font-weight:900">' + (i.paid ? 'PAID' : 'UNPAID') + '</div>' +
+      '</div></div>' +
+
+      '<div class="bill-grid">' +
+        '<div class="bill-box"><b>BILLED TO</b><br>' +
+          esc(cust.name) +
+          (cust.address ? '<br>' + esc(cust.address).replace(/\n/g,'<br>') : '') +
+          (cust.phone ? '<br>' + esc(cust.phone) : '') +
+          (cust.email ? '<br>' + esc(cust.email) : '') +
+        '</div>' +
+        '<div class="bill-box"><b>VEHICLE / JOB</b><br>' +
+          (vehicle.reg ? 'Registration: ' + esc(vehicle.reg) + '<br>' : '') +
+          (vehicleBits ? vehicleBits + '<br>' : '') +
+          (vehicle.title ? 'Job: ' + esc(vehicle.title) : '') +
+        '</div>' +
+      '</div>' +
+
+      (Number(i.labour || 0) ? '<table><tbody><tr><td><b>Labour</b>' +
+        (i.hours ? ' — ' + esc(i.hours) + ' hours @ ' + money(db.settings.hourlyRate || 0) + '/hr' : '') +
+        '</td><td style="text-align:right"><b>' + money(i.labour) + '</b></td></tr></tbody></table>' : '') +
+
+      (partsRows ? '<div style="margin-top:18px;font-weight:900">PARTS USED</div>' +
+        '<table class="parts-table"><thead><tr><th>Part</th><th>Qty</th><th>Each</th><th>Total</th></tr></thead><tbody>' +
+        partsRows +
+        '<tr class="parts-subtotal"><td colspan="3">Parts subtotal</td><td>' + money(partsSubtotal) + '</td></tr>' +
+        '</tbody></table>' : '') +
+
+      ((Number(i.travel || 0) || Number(i.other || 0)) ?
+        '<table><tbody>' +
+          (Number(i.travel || 0) ? '<tr><td>Travel / call-out</td><td>' + money(i.travel) + '</td></tr>' : '') +
+          (Number(i.other || 0) ? '<tr><td>Other</td><td>' + money(i.other) + '</td></tr>' : '') +
+        '</tbody></table>' : '') +
+
+      '<div class="inv-total">Total: ' + money(i.total) + '</div>' +
+    '</div>';
+  }
+
+  // Replace the invoice functions that v16 repaired, keeping the same button wiring.
+  window.viewInvoice = function(id, button){
+    var i = (db.invoices || []).find(function(x){ return x.id === id; });
+    if (!i) { alert('Invoice not found.'); return; }
+    if (window.closeInlineInvoice) closeInlineInvoice();
+
+    var host = document.createElement('div');
+    host.id = 'inlineInvoicePreview';
+
+    var actions = document.createElement('div');
+    actions.className = 'inline-actions';
+
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'secondary';
+    closeBtn.textContent = 'Close invoice';
+    closeBtn.addEventListener('click', function(){ closeInlineInvoice(); });
+
+    var printBtn = document.createElement('button');
+    printBtn.textContent = 'Print / Save PDF';
+    printBtn.addEventListener('click', function(){ printShareInvoice(id); });
+
+    var emailBtn = document.createElement('button');
+    emailBtn.textContent = 'Email';
+    emailBtn.addEventListener('click', function(){ emailInvoice(id); });
+
+    actions.append(closeBtn, printBtn, emailBtn);
+
+    var content = document.createElement('div');
+    content.innerHTML = invoiceHtmlV17(i);
+    host.append(actions, content);
+
+    var card = button && button.closest ? button.closest('.card') : null;
+    (card || document.getElementById('app')).appendChild(host);
+    try { host.scrollIntoView({behavior:'smooth', block:'start'}); } catch(e) { host.scrollIntoView(); }
+  };
+
+  window.printShareInvoice = function(id){
+    var i = (db.invoices || []).find(function(x){ return x.id === id; });
+    if (!i) { alert('Invoice not found.'); return; }
+    var host = document.getElementById('invoicePrintHost');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'invoicePrintHost';
+      document.body.appendChild(host);
+    }
+    host.innerHTML = invoiceHtmlV17(i);
+    host.style.display = 'block';
+    setTimeout(function(){
+      window.print();
+      setTimeout(function(){ host.style.display='none'; host.innerHTML=''; }, 750);
+    }, 100);
+  };
+
+  window.emailInvoice = function(id){
+    var i = (db.invoices || []).find(function(x){ return x.id === id; });
+    if (!i) { alert('Invoice not found.'); return; }
+    var cust = invoiceCustomer(i);
+    var vehicle = invoiceVehicle(i);
+    var settings = db.settings || {};
+    var subject = 'Invoice ' + (i.number || '') + ' - ' + (settings.companyName || 'Mechanic Mate');
+    var body =
+      (settings.companyName || 'Mechanic Mate') + '\n' +
+      (settings.companyPhone ? settings.companyPhone + '\n' : '') +
+      (settings.companyEmail ? settings.companyEmail + '\n' : '') +
+      '\nInvoice: ' + (i.number || '') +
+      '\nDate: ' + (i.date || '') +
+      '\nBilled to: ' + cust.name +
+      (vehicle.reg ? '\nRegistration: ' + vehicle.reg : '') +
+      '\nTotal: ' + money(i.total || 0) +
+      '\nStatus: ' + (i.paid ? 'PAID' : 'UNPAID');
+
+    window.location.href = 'mailto:' + encodeURIComponent(cust.email || i.email || '') +
+      '?subject=' + encodeURIComponent(subject) +
+      '&body=' + encodeURIComponent(body);
+  };
+
+  save();
+  render();
 })();
 </script>
 
