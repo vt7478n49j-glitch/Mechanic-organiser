@@ -1,1 +1,2 @@
-Mechanic Mate v15 - inline expanding HTML invoice preview
+Mechanic Mate v16
+Invoice buttons repaired after JavaScript syntax-error diagnosis.

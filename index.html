@@ -40,7 +40,7 @@ function jobs(){return `<div class="row"><h2>Jobs</h2><button class="primary" on
 function customers(){return `<div class="row"><h2>Customers</h2><button class="primary" onclick="customerForm()">＋ Add</button></div>${db.customers.map(c=>`<div class="card"><b>${esc(c.name)}</b><div class="muted">${esc(c.phone)}${c.email?'<br>'+esc(c.email):''}<br>${esc(c.vehicle)}<br>${esc(c.address)}</div><div class="actions"><button onclick="customerForm('${c.id}')">Edit</button><button class="danger" onclick="del('customers','${c.id}')">Delete</button></div></div>`).join('')||'<div class="empty">No customers.</div>'}`}
 function partJobs(p){return db.jobs.filter(j=>(j.partIds||[]).includes(p.id))}
 function parts(){return `<div class="row"><h2>Parts</h2><button class="primary" onclick="partForm()">＋ Add</button></div>${db.parts.slice().reverse().map(p=>{const js=partJobs(p);return `<div class="card"><div class="row"><b>${esc(p.name)}</b><span class="price">${money(p.charge||p.cost)}</span></div><div class="muted">Cost ${money(p.cost)}${p.supplier?' • '+esc(p.supplier):''}</div><div class="muted">${js.length?'Used on: '+js.map(j=>esc(j.title||j.reg||'Job')).join(', '):'Not linked to a job'}</div><div class="actions"><button onclick="partForm('${p.id}')">Edit</button><button class="danger" onclick="deletePart('${p.id}')">Delete</button></div></div>`}).join('')||'<div class="empty">No parts.</div>'}`}
-function invoices(){return `<div class="row"><h2>Invoices</h2><button class="primary" onclick="invoiceForm()">＋ New</button></div>${db.invoices.slice().reverse().map(i=>`<div class="card"><div class="row"><b>${esc(i.number)}</b><b>${money(i.total)}</b></div><div class="muted">${esc(i.customer)} • ${esc(i.date)}${i.jobId?' • linked job':''}</div><p>${i.paid?'✅ PAID':'⚠️ UNPAID'}</p><div class="actions"><button class="primary" onclick="viewInvoice('${i.id}')">View Invoice</button><button onclick="viewInvoice('${i.id}')">Print / Share</button><button onclick="emailInvoice('${i.id}')">Email</button><button onclick="paid('${i.id}')">Mark ${i.paid?'unpaid':'paid'}</button><button class="danger" onclick="del('invoices','${i.id}')">Delete</button></div></div>`).join('')||'<div class="empty">No invoices.</div>'}`}
+function invoices(){return `<div class="row"><h2>Invoices</h2><button class="primary" onclick="invoiceForm()">＋ New</button></div>${db.invoices.slice().reverse().map(i=>`<div class="card"><div class="row"><b>${esc(i.number)}</b><b>${money(i.total)}</b></div><div class="muted">${esc(i.customer)} • ${esc(i.date)}${i.jobId?' • linked job':''}</div><p>${i.paid?'✅ PAID':'⚠️ UNPAID'}</p><div class="actions"><button class="primary" onclick="viewInvoice('${i.id}',this)">View Invoice</button><button onclick="printShareInvoice('${i.id}')">Print / Share</button><button onclick="emailInvoice('${i.id}')">Email</button><button onclick="paid('${i.id}')">Mark ${i.paid?'unpaid':'paid'}</button><button class="danger" onclick="del('invoices','${i.id}')">Delete</button></div></div>`).join('')||'<div class="empty">No invoices.</div>'}`}
 function settings(){return `<h2>Settings</h2><div class="card"><b>Business details</b><p class="muted">These details appear on your invoices and the logo also appears in the app header.</p><label>Company name</label><input id="companyName" value="${esc(db.settings.companyName||'')}" placeholder="e.g. Roadside Auto Solutions"><label>Company logo</label>${db.settings.companyLogo?`<div style="margin:8px 0"><img class="logo-preview" src="${db.settings.companyLogo}" alt="Logo preview"></div>`:'<div class="muted" style="margin:8px 0">No logo uploaded yet.</div>'}<input id="logoUpload" type="file" accept="image/*" onchange="handleLogoUpload(event)"><div class="actions"><button class="primary" onclick="saveBusinessSettings()">Save business details</button>${db.settings.companyLogo?'<button class="danger" onclick="removeLogo()">Remove logo</button>':''}</div></div><div class="card"><b>Labour rate</b><p class="muted">Used automatically when you enter hours on a job.</p><label>Hourly charge (£)</label><input id="rate" type="number" min="0" step="0.01" value="${Number(db.settings.hourlyRate||0)}"><button class="primary" onclick="db.settings.hourlyRate=Number(rate.value||0);save();alert('Hourly rate saved')">Save rate</button></div><div class="card"><b>Backup</b><p class="muted">Export your data regularly. Your uploaded logo is included in the backup.</p><button class="primary" onclick="exportData()">Export backup</button> <button onclick="imp.click()">Import</button><input id="imp" type="file" accept=".json" style="display:none" onchange="importData(event)"></div><div class="card"><b>Reset</b><p class="muted">Delete everything stored on this device.</p><button class="danger" onclick="resetData()">Delete all data</button></div>`}
 function handleLogoUpload(e){const f=e.target.files&&e.target.files[0];if(!f)return;if(f.size>3*1024*1024){alert('Please use a logo under 3 MB.');e.target.value='';return}const r=new FileReader();r.onload=()=>{db.settings.companyLogo=r.result;save();render();alert('Logo saved')};r.readAsDataURL(f)}
 function saveBusinessSettings(){db.settings.companyName=companyName.value.trim();save();render();alert('Business details saved')}
@@ -104,53 +104,169 @@ function exportData(){let a=document.createElement('a');a.href=URL.createObjectU
 function importData(e){let r=new FileReader;r.onload=()=>{try{db=JSON.parse(r.result);db.settings=db.settings||{hourlyRate:45,companyName:'',companyLogo:''};if(db.settings.companyName==null)db.settings.companyName='';if(db.settings.companyLogo==null)db.settings.companyLogo='';db.jobs=(db.jobs||[]).map(j=>({...j,partIds:Array.isArray(j.partIds)?j.partIds:[],hours:Number(j.hours||0)}));db.parts=(db.parts||[]).map(p=>({...p,charge:Number(p.charge??p.cost??0)}));save();render();alert('Backup imported')}catch{alert('Invalid backup')}};r.readAsText(e.target.files[0])}function resetData(){if(confirm('Delete ALL data?')){db={jobs:[],customers:[],parts:[],invoices:[],settings:{hourlyRate:45,companyName:'',companyLogo:''}};save();render()}}
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(console.error))}save();render();
 </script><div id="invoicePrintHost" style="display:none"></div>
+
+
 <script>
-function mmInvoiceFor(id){ return (d.invoices||[]).find(function(x){return x.id===id;}); }
-function mmJobFor(i){ return (d.jobs||[]).find(function(j){return j.id===i.jobId;}) || {}; }
-function mmCustomerFor(i){ return (d.customers||[]).find(function(c){return c.id===i.customerId;}) || {}; }
-function mmNum(v){ v=Number(v); return isFinite(v)?v:0; }
-function mmMoney(v){ return new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP'}).format(mmNum(v)); }
-function mmInvoiceHTML(i){
-  var j=mmJobFor(i), c=mmCustomerFor(i), s=d.settings||{};
-  var labour=mmNum(i.labour!=null?i.labour:(i.labourTotal!=null?i.labourTotal:0));
-  var parts=mmNum(i.parts!=null?i.parts:(i.partsTotal!=null?i.partsTotal:0));
-  var callout=mmNum(i.callout!=null?i.callout:(i.travel!=null?i.travel:0));
-  var other=mmNum(i.other);
-  var total=mmNum(i.total) || labour+parts+callout+other;
-  var logo=s.logo||s.logoData||s.businessLogo||'';
-  var company=s.companyName||s.businessName||'Mechanic Mate';
-  return '<div class="inline-invoice">'+
-   '<div class="inv-head"><div>'+(logo?'<img class="inv-logo" src="'+logo+'" alt="">':'')+
-   '<div style="font-weight:900;font-size:18px">'+esc(company)+'</div></div>'+
-   '<div style="text-align:right"><div class="inv-title">INVOICE</div><div class="inv-meta">'+esc(i.number||'')+'<br>'+esc(i.date||'')+'</div></div></div>'+
-   '<div class="inv-meta"><b>Customer:</b> '+esc(i.customer||c.name||'')+'<br>'+
-   (j.reg?'<b>Registration:</b> '+esc(j.reg)+'<br>':'')+
-   (j.title?'<b>Job:</b> '+esc(j.title)+'<br>':'')+'</div>'+
-   '<table><thead><tr><th>Description</th><th>Amount</th></tr></thead><tbody>'+
-   (labour?'<tr><td>Labour</td><td>'+mmMoney(labour)+'</td></tr>':'')+
-   (parts?'<tr><td>Parts</td><td>'+mmMoney(parts)+'</td></tr>':'')+
-   (callout?'<tr><td>Call-out / travel</td><td>'+mmMoney(callout)+'</td></tr>':'')+
-   (other?'<tr><td>Other</td><td>'+mmMoney(other)+'</td></tr>':'')+
-   '</tbody></table><div class="inv-total">Total: '+mmMoney(total)+'</div>'+
-   '<div style="margin-top:16px;font-weight:800">'+(i.paid?'PAID':'UNPAID')+'</div></div>';
-}
-function viewInvoice(id){
-  var i=mmInvoiceFor(id); if(!i){alert('Invoice not found');return;}
-  var old=document.getElementById('inlineInvoicePreview'); if(old) old.remove();
-  var card=null, btn=null;
-  try{btn=event && event.currentTarget;}catch(e){}
-  if(btn) card=btn.closest('.card');
-  if(!card){ card=document.getElementById('app'); }
-  var wrap=document.createElement('div'); wrap.id='inlineInvoicePreview';
-  wrap.innerHTML='<div class="inline-actions"><button class="secondary" onclick="document.getElementById(\\'inlineInvoicePreview\\').remove()">Close invoice</button><button onclick="printInlineInvoice(\\''+id+'\\')">Print / Save PDF</button></div>'+mmInvoiceHTML(i);
-  card.appendChild(wrap);
-  wrap.scrollIntoView({behavior:'smooth',block:'start'});
-}
-function printInlineInvoice(id){
-  var i=mmInvoiceFor(id); if(!i)return;
-  var host=document.getElementById('invoicePrintHost');
-  host.innerHTML=mmInvoiceHTML(i); host.style.display='block';
-  setTimeout(function(){window.print();setTimeout(function(){host.style.display='none';host.innerHTML='';},500)},50);
-}
+(function(){
+  function invoiceById(id){
+    return (db.invoices || []).find(function(x){ return x.id === id; });
+  }
+
+  function jobByInvoice(i){
+    return (db.jobs || []).find(function(j){ return j.id === i.jobId; }) || {};
+  }
+
+  function num(v){
+    v = Number(v);
+    return Number.isFinite(v) ? v : 0;
+  }
+
+  function invoiceHtml(i){
+    var j = jobByInvoice(i);
+    var settings = db.settings || {};
+    var labour = num(i.labour);
+    var parts = num(i.parts);
+    var travel = num(i.travel);
+    var other = num(i.other);
+    var total = num(i.total) || labour + parts + travel + other;
+    var company = settings.companyName || 'Mechanic Mate';
+    var logo = settings.companyLogo || '';
+
+    var rows = '';
+    if (labour) rows += '<tr><td>Labour' + (i.hours ? ' (' + esc(i.hours) + ' hours)' : '') + '</td><td>' + money(labour) + '</td></tr>';
+    if (parts) rows += '<tr><td>Parts</td><td>' + money(parts) + '</td></tr>';
+    if (travel) rows += '<tr><td>Travel / call-out</td><td>' + money(travel) + '</td></tr>';
+    if (other) rows += '<tr><td>Other</td><td>' + money(other) + '</td></tr>';
+
+    return '<div class="inline-invoice">' +
+      '<div class="inv-head">' +
+        '<div>' +
+          (logo ? '<img class="inv-logo" src="' + logo + '" alt="Company logo">' : '') +
+          '<div style="font-weight:900;font-size:20px">' + esc(company) + '</div>' +
+        '</div>' +
+        '<div style="text-align:right">' +
+          '<div class="inv-title">INVOICE</div>' +
+          '<div class="inv-meta">' + esc(i.number || '') + '<br>' + esc(i.date || '') + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="inv-meta">' +
+        '<b>Customer:</b> ' + esc(i.customer || '') + '<br>' +
+        (j.reg ? '<b>Registration:</b> ' + esc(j.reg) + '<br>' : '') +
+        (j.title ? '<b>Job:</b> ' + esc(j.title) + '<br>' : '') +
+      '</div>' +
+      '<table><thead><tr><th>Description</th><th>Amount</th></tr></thead><tbody>' +
+        rows +
+      '</tbody></table>' +
+      '<div class="inv-total">Total: ' + money(total) + '</div>' +
+      '<div style="margin-top:16px;font-weight:900">' + (i.paid ? 'PAID' : 'UNPAID') + '</div>' +
+    '</div>';
+  }
+
+  window.closeInlineInvoice = function(){
+    var el = document.getElementById('inlineInvoicePreview');
+    if (el) el.remove();
+  };
+
+  window.viewInvoice = function(id, button){
+    var i = invoiceById(id);
+    if (!i) {
+      alert('Invoice not found.');
+      return;
+    }
+
+    closeInlineInvoice();
+
+    var host = document.createElement('div');
+    host.id = 'inlineInvoicePreview';
+
+    var actions = document.createElement('div');
+    actions.className = 'inline-actions';
+
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'secondary';
+    closeBtn.textContent = 'Close invoice';
+    closeBtn.addEventListener('click', closeInlineInvoice);
+
+    var printBtn = document.createElement('button');
+    printBtn.textContent = 'Print / Save PDF';
+    printBtn.addEventListener('click', function(){ printShareInvoice(id); });
+
+    var emailBtn = document.createElement('button');
+    emailBtn.textContent = 'Email';
+    emailBtn.addEventListener('click', function(){ emailInvoice(id); });
+
+    actions.appendChild(closeBtn);
+    actions.appendChild(printBtn);
+    actions.appendChild(emailBtn);
+
+    var content = document.createElement('div');
+    content.innerHTML = invoiceHtml(i);
+
+    host.appendChild(actions);
+    host.appendChild(content);
+
+    var card = button && button.closest ? button.closest('.card') : null;
+    (card || document.getElementById('app')).appendChild(host);
+
+    try {
+      host.scrollIntoView({behavior:'smooth', block:'start'});
+    } catch(e) {
+      host.scrollIntoView();
+    }
+  };
+
+  window.printShareInvoice = function(id){
+    var i = invoiceById(id);
+    if (!i) {
+      alert('Invoice not found.');
+      return;
+    }
+
+    var host = document.getElementById('invoicePrintHost');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'invoicePrintHost';
+      document.body.appendChild(host);
+    }
+
+    host.innerHTML = invoiceHtml(i);
+    host.style.display = 'block';
+
+    setTimeout(function(){
+      window.print();
+      setTimeout(function(){
+        host.style.display = 'none';
+        host.innerHTML = '';
+      }, 750);
+    }, 100);
+  };
+
+  window.emailInvoice = function(id){
+    var i = invoiceById(id);
+    if (!i) {
+      alert('Invoice not found.');
+      return;
+    }
+
+    var j = jobByInvoice(i);
+    var company = (db.settings && db.settings.companyName) || 'Mechanic Mate';
+    var subject = 'Invoice ' + (i.number || '') + ' - ' + company;
+    var body =
+      company + '\n\n' +
+      'Invoice: ' + (i.number || '') + '\n' +
+      'Date: ' + (i.date || '') + '\n' +
+      'Customer: ' + (i.customer || '') + '\n' +
+      (j.reg ? 'Registration: ' + j.reg + '\n' : '') +
+      'Total: ' + money(i.total || 0) + '\n' +
+      'Status: ' + (i.paid ? 'PAID' : 'UNPAID');
+
+    var address = i.email || '';
+    window.location.href =
+      'mailto:' + encodeURIComponent(address) +
+      '?subject=' + encodeURIComponent(subject) +
+      '&body=' + encodeURIComponent(body);
+  };
+})();
 </script>
+
 </body></html>
