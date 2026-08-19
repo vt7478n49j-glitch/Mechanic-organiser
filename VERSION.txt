@@ -1,2 +1,2 @@
-Mechanic Mate v19
-Fix: keep INVOICE heading on one line without clipping the invoice number/date/status.
+Mechanic Mate v20
+Added Part No. field to saved parts and invoices.
