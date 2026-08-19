@@ -88,6 +88,57 @@
 }
 </style>
 
+
+<style>
+/* v19: keep INVOICE on one line while keeping the right header inside the card */
+.inline-invoice .inv-head{
+  display:grid !important;
+  grid-template-columns:minmax(0,1fr) auto !important;
+  gap:12px;
+  align-items:start;
+}
+.inline-invoice .inv-head > div{
+  min-width:0;
+}
+.inline-invoice .inv-head > div:last-child{
+  width:auto !important;
+  max-width:46vw;
+  min-width:132px;
+  text-align:right !important;
+}
+.inline-invoice .inv-title{
+  white-space:nowrap !important;
+  overflow-wrap:normal !important;
+  word-break:normal !important;
+  font-size:clamp(22px,7vw,38px) !important;
+  line-height:1 !important;
+}
+.inline-invoice .inv-meta{
+  white-space:normal;
+  overflow-wrap:anywhere;
+  font-size:clamp(12px,3.8vw,16px);
+  line-height:1.35;
+}
+@media(max-width:430px){
+  .inline-invoice .inv-head{
+    grid-template-columns:minmax(0,1fr) minmax(132px,44%) !important;
+    gap:9px;
+  }
+  .inline-invoice .inv-title{
+    font-size:clamp(21px,6.7vw,32px) !important;
+  }
+}
+@media(max-width:350px){
+  .inline-invoice .inv-head{
+    grid-template-columns:1fr !important;
+  }
+  .inline-invoice .inv-head > div:last-child{
+    max-width:100% !important;
+    text-align:left !important;
+  }
+}
+</style>
+
 </head><body>
 <div class="topbar"><div class="brandtext"><h1>🔧 Mechanic Mate</h1><div class="sub">Private mobile mechanic job manager</div></div><img id="headerLogo" class="app-logo hidden" alt="Company logo"></div><div id="nav" class="nav"></div><main id="app"></main><div id="modal"></div>
 <script>

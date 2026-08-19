@@ -1,2 +1,2 @@
-Mechanic Mate v18
-Responsive invoice header fix for clipped invoice number/date/status on narrow phones.
+Mechanic Mate v19
+Fix: keep INVOICE heading on one line without clipping the invoice number/date/status.
