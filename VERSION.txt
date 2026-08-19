@@ -1,2 +1,2 @@
-Mechanic Mate v17
-Customer vehicle details, part quantities, itemised invoice parts, business phone/email and Billed To section.
+Mechanic Mate v18
+Responsive invoice header fix for clipped invoice number/date/status on narrow phones.
