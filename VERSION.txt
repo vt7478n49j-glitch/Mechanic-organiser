@@ -1,2 +1,2 @@
-Mechanic Mate v20
-Added Part No. field to saved parts and invoices.
+Mechanic Mate v21
+Email PDF: generates a real invoice PDF locally and shares it as a file via the iPhone share sheet.
