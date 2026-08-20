@@ -1,2 +1,2 @@
-Mechanic Mate v21
-Email PDF: generates a real invoice PDF locally and shares it as a file via the iPhone share sheet.
+Mechanic Mate v22
+PDF fixes: company logo embedded in emailed/shared PDF and header divider moved below payment status.

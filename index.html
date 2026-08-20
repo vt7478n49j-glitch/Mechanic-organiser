@@ -1556,4 +1556,426 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 })();
 </script>
 
+
+<script>
+(function(){
+  // v22 PDF fixes:
+  // 1) Embed the saved company logo in the generated PDF.
+  // 2) Move the header divider safely below PAID / UNPAID.
+
+  function v22Invoice(id){
+    return (db.invoices || []).find(function(x){ return x.id === id; });
+  }
+
+  function v22Customer(i){
+    var billed = i.billedTo || {};
+    var c = (db.customers || []).find(function(x){ return x.name === i.customer; }) || {};
+    return {
+      name: billed.name || i.customer || c.name || '',
+      phone: billed.phone || c.phone || '',
+      email: billed.email || i.email || c.email || '',
+      address: billed.address || c.address || ''
+    };
+  }
+
+  function v22Vehicle(i){
+    var j = (db.jobs || []).find(function(x){ return x.id === i.jobId; }) || {};
+    var c = (db.customers || []).find(function(x){ return x.name === i.customer; }) || {};
+    return {
+      reg: j.reg || c.reg || c.vehicle || '',
+      make: j.make || c.make || '',
+      model: j.model || c.model || '',
+      engineSize: j.engineSize || c.engineSize || '',
+      title: j.title || ''
+    };
+  }
+
+  function v22PartLines(i){
+    if (Array.isArray(i.partLines) && i.partLines.length) {
+      return i.partLines.map(function(line){
+        var current = (db.parts || []).find(function(p){ return p.id === line.partId; }) || {};
+        var qty = Number(line.qty || 1);
+        var unit = Number(line.unitPrice || current.charge || current.cost || 0);
+        return {
+          name: line.name || current.name || 'Part',
+          partNo: line.partNo || current.partNo || '',
+          qty: qty,
+          unitPrice: unit,
+          total: Number(line.total || qty * unit)
+        };
+      });
+    }
+    var j = (db.jobs || []).find(function(x){ return x.id === i.jobId; });
+    if (j && typeof window.jobPartLines === 'function') return window.jobPartLines(j);
+    return [];
+  }
+
+  function v22PdfEscape(s){
+    s = String(s == null ? '' : s);
+    return s
+      .replace(/\\/g, '\\\\')
+      .replace(/\(/g, '\\(')
+      .replace(/\)/g, '\\)')
+      .replace(/£/g, '\\243')
+      .replace(/[–—]/g, '-')
+      .replace(/[“”]/g, '"')
+      .replace(/[‘’]/g, "'")
+      .replace(/[^\x20-\x7E\\]/g, '');
+  }
+
+  function v22Wrap(text, maxChars){
+    var words = String(text || '').split(/\s+/);
+    var lines = [], line = '';
+    words.forEach(function(word){
+      var test = line ? line + ' ' + word : word;
+      if (test.length > maxChars && line) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = test;
+      }
+    });
+    if (line) lines.push(line);
+    return lines.length ? lines : [''];
+  }
+
+  function dataUrlToBytes(dataUrl){
+    var base64 = String(dataUrl).split(',')[1] || '';
+    var bin = atob(base64);
+    var bytes = new Uint8Array(bin.length);
+    for (var i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+
+  async function companyLogoAsJpeg(){
+    var src = (db.settings || {}).companyLogo || '';
+    if (!src) return null;
+
+    // Existing JPEG logo can be embedded directly.
+    if (/^data:image\/jpe?g;base64,/i.test(src)) {
+      return await new Promise(function(resolve){
+        var img = new Image();
+        img.onload = function(){
+          resolve({bytes:dataUrlToBytes(src), width:img.naturalWidth || img.width, height:img.naturalHeight || img.height});
+        };
+        img.onerror = function(){ resolve(null); };
+        img.src = src;
+      });
+    }
+
+    // PNG/other uploaded logos are converted to a small JPEG for PDF embedding.
+    return await new Promise(function(resolve){
+      var img = new Image();
+      img.onload = function(){
+        try {
+          var max = 500;
+          var scale = Math.min(1, max / Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height));
+          var w = Math.max(1, Math.round((img.naturalWidth || img.width) * scale));
+          var h = Math.max(1, Math.round((img.naturalHeight || img.height) * scale));
+          var canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          var ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0,0,w,h);
+          ctx.drawImage(img,0,0,w,h);
+          var jpeg = canvas.toDataURL('image/jpeg',0.9);
+          resolve({bytes:dataUrlToBytes(jpeg), width:w, height:h});
+        } catch(e) {
+          resolve(null);
+        }
+      };
+      img.onerror = function(){ resolve(null); };
+      img.src = src;
+    });
+  }
+
+  async function makeInvoicePdfBlobV22(i){
+    var settings = db.settings || {};
+    var cust = v22Customer(i);
+    var vehicle = v22Vehicle(i);
+    var parts = v22PartLines(i);
+    var logo = await companyLogoAsJpeg();
+
+    var pageW = 595, pageH = 842;
+    var left = 46, right = 549;
+    var pages = [];
+    var cmds = [];
+    var y = 790;
+
+    function text(x, yy, size, value, bold){
+      cmds.push('BT /' + (bold ? 'F2' : 'F1') + ' ' + size + ' Tf 1 0 0 1 ' +
+        x.toFixed(1) + ' ' + yy.toFixed(1) + ' Tm (' + v22PdfEscape(value) + ') Tj ET');
+    }
+    function rightText(yy, size, value, bold){
+      var str = String(value || '');
+      var approx = str.length * size * 0.52;
+      text(Math.max(left, right - approx), yy, size, str, bold);
+    }
+    function line(yy){
+      cmds.push('0.65 w ' + left + ' ' + yy.toFixed(1) + ' m ' + right + ' ' + yy.toFixed(1) + ' l S');
+    }
+    function addLogo(x, topY, maxW, maxH){
+      if (!logo) return 0;
+      var ratio = logo.width / logo.height;
+      var w = maxW, h = w / ratio;
+      if (h > maxH) { h = maxH; w = h * ratio; }
+      var bottom = topY - h;
+      cmds.push('q ' + w.toFixed(2) + ' 0 0 ' + h.toFixed(2) + ' ' +
+        x.toFixed(2) + ' ' + bottom.toFixed(2) + ' cm /Im1 Do Q');
+      return h;
+    }
+    function newPage(){
+      if (cmds.length) pages.push(cmds.join('\n'));
+      cmds = [];
+      y = 790;
+      text(left, y, 18, settings.companyName || 'Mechanic Mate', true);
+      rightText(y, 18, 'INVOICE ' + (i.number || ''), true);
+      y -= 28;
+    }
+    function ensure(space){
+      if (y - space < 65) newPage();
+    }
+    function wrapped(x, value, size, maxChars, bold, leading){
+      leading = leading || (size + 4);
+      v22Wrap(value, maxChars).forEach(function(ln){
+        ensure(leading + 2);
+        text(x, y, size, ln, bold);
+        y -= leading;
+      });
+    }
+
+    // Header. Logo occupies the upper-left when available.
+    var headerTop = 792;
+    var logoH = addLogo(left, headerTop, 78, 72);
+    var companyX = logo ? left + 92 : left;
+
+    text(companyX, 786, 18, settings.companyName || 'Mechanic Mate', true);
+    if (settings.companyPhone) text(companyX, 762, 9.5, settings.companyPhone, false);
+    if (settings.companyEmail) text(companyX, 747, 9.5, settings.companyEmail, false);
+
+    rightText(786, 27, 'INVOICE', true);
+    rightText(754, 11, i.number || '', true);
+    rightText(735, 10, i.date || '', false);
+    rightText(711, 11, i.paid ? 'PAID' : 'UNPAID', true);
+
+    // Divider is deliberately below the status so it never runs through it.
+    y = 686;
+    line(y);
+    y -= 26;
+
+    // Billed to
+    text(left, y, 12, 'BILLED TO', true); y -= 18;
+    wrapped(left, cust.name, 11, 50, false, 15);
+    if (cust.address) {
+      String(cust.address).split(/\n/).forEach(function(a){ wrapped(left, a, 10, 58, false, 14); });
+    }
+    if (cust.phone) { text(left, y, 10, cust.phone, false); y -= 14; }
+    if (cust.email) wrapped(left, cust.email, 10, 58, false, 14);
+    y -= 6;
+    line(y); y -= 24;
+
+    // Vehicle / job
+    text(left, y, 12, 'VEHICLE / JOB', true); y -= 18;
+    if (vehicle.reg) { text(left, y, 10, 'Registration: ' + vehicle.reg, false); y -= 15; }
+    var vdesc = [vehicle.make, vehicle.model, vehicle.engineSize].filter(Boolean).join(' ');
+    if (vdesc) wrapped(left, vdesc, 10, 58, false, 15);
+    if (vehicle.title) wrapped(left, 'Job: ' + vehicle.title, 10, 58, false, 15);
+    y -= 10;
+
+    // Labour
+    if (Number(i.labour || 0)) {
+      ensure(35);
+      var labourDesc = 'Labour';
+      if (i.hours) labourDesc += ' - ' + i.hours + ' hours @ ' + money((db.settings || {}).hourlyRate || 0) + '/hr';
+      text(left, y, 11, labourDesc, true);
+      rightText(y, 11, money(i.labour), true);
+      y -= 18;
+      line(y); y -= 25;
+    }
+
+    // Parts
+    if (parts.length || Number(i.parts || 0)) {
+      ensure(65);
+      text(left, y, 13, 'PARTS USED', true); y -= 22;
+      text(left, y, 9, 'Part', true);
+      text(265, y, 9, 'Part No.', true);
+      text(375, y, 9, 'Qty', true);
+      text(420, y, 9, 'Each', true);
+      rightText(y, 9, 'Total', true);
+      y -= 13; line(y); y -= 17;
+
+      var partsSubtotal = 0;
+      if (parts.length) {
+        parts.forEach(function(part){
+          ensure(34);
+          var nameLines = v22Wrap(part.name || 'Part', 28);
+          nameLines.forEach(function(nm, idx){ text(left, y - idx*13, 9, nm, false); });
+          text(265, y, 8.5, part.partNo || '', false);
+          text(382, y, 9, String(part.qty || 1), false);
+          text(420, y, 9, money(part.unitPrice || 0), false);
+          rightText(y, 9, money(part.total || 0), false);
+          partsSubtotal += Number(part.total || 0);
+          y -= Math.max(18, nameLines.length*13 + 5);
+        });
+      } else {
+        partsSubtotal = Number(i.parts || 0);
+        text(left, y, 9, 'Parts', false);
+        text(382, y, 9, '1', false);
+        text(420, y, 9, money(partsSubtotal), false);
+        rightText(y, 9, money(partsSubtotal), false);
+        y -= 19;
+      }
+
+      line(y); y -= 18;
+      text(left, y, 10, 'Parts subtotal', true);
+      rightText(y, 10, money(partsSubtotal), true);
+      y -= 24;
+    }
+
+    if (Number(i.travel || 0)) {
+      ensure(20);
+      text(left, y, 10, 'Travel / call-out', false);
+      rightText(y, 10, money(i.travel), false);
+      y -= 17;
+    }
+    if (Number(i.other || 0)) {
+      ensure(20);
+      text(left, y, 10, 'Other', false);
+      rightText(y, 10, money(i.other), false);
+      y -= 17;
+    }
+
+    ensure(42);
+    line(y); y -= 28;
+    rightText(y, 20, 'Total: ' + money(i.total || 0), true);
+    pages.push(cmds.join('\n'));
+
+    // Build PDF objects. If a logo exists, object 5 is the JPEG XObject.
+    var objects = [];
+    objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+    objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+    objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+
+    var nextObj = 5;
+    var imageObj = null;
+    if (logo) imageObj = nextObj++;
+
+    var pageObjectNums = [];
+    var contentObjectNums = [];
+    pages.forEach(function(){
+      pageObjectNums.push(nextObj++);
+      contentObjectNums.push(nextObj++);
+    });
+
+    objects[2] = '<< /Type /Pages /Kids [' + pageObjectNums.map(function(n){return n+' 0 R';}).join(' ') + '] /Count ' + pages.length + ' >>';
+
+    if (logo) {
+      var bin = '';
+      var chunk = 0x8000;
+      for (var bi=0; bi<logo.bytes.length; bi+=chunk) {
+        var sub = logo.bytes.subarray(bi, Math.min(bi+chunk, logo.bytes.length));
+        bin += String.fromCharCode.apply(null, sub);
+      }
+      objects[imageObj] =
+        '<< /Type /XObject /Subtype /Image /Width ' + logo.width +
+        ' /Height ' + logo.height +
+        ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' +
+        logo.bytes.length + ' >>\nstream\n' + bin + '\nendstream';
+    }
+
+    pages.forEach(function(content, idx){
+      var pnum = pageObjectNums[idx], cnum = contentObjectNums[idx];
+      var xobj = logo ? ' /XObject << /Im1 ' + imageObj + ' 0 R >>' : '';
+      objects[pnum] =
+        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + pageW + ' ' + pageH +
+        '] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>' + xobj +
+        ' >> /Contents ' + cnum + ' 0 R >>';
+      objects[cnum] = '<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream';
+    });
+
+    var pdf = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
+    var offsets = [0];
+    for (var n=1; n<objects.length; n++) {
+      if (!objects[n]) continue;
+      offsets[n] = pdf.length;
+      pdf += n + ' 0 obj\n' + objects[n] + '\nendobj\n';
+    }
+
+    var xref = pdf.length;
+    pdf += 'xref\n0 ' + objects.length + '\n';
+    pdf += '0000000000 65535 f \n';
+    for (var k=1; k<objects.length; k++) {
+      var off = offsets[k] || 0;
+      pdf += String(off).padStart(10,'0') + ' 00000 n \n';
+    }
+    pdf += 'trailer\n<< /Size ' + objects.length + ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF';
+
+    var bytes = new Uint8Array(pdf.length);
+    for (var b=0; b<pdf.length; b++) bytes[b] = pdf.charCodeAt(b) & 255;
+    return new Blob([bytes], {type:'application/pdf'});
+  }
+
+  window.createInvoicePdfFile = async function(id){
+    var i = v22Invoice(id);
+    if (!i) throw new Error('Invoice not found.');
+    var safeNo = String(i.number || 'invoice').replace(/[^A-Za-z0-9_-]+/g,'-');
+    var blob = await makeInvoicePdfBlobV22(i);
+    return new File([blob], safeNo + '.pdf', {type:'application/pdf'});
+  };
+
+  window.emailInvoice = async function(id){
+    var i = v22Invoice(id);
+    if (!i) { alert('Invoice not found.'); return; }
+
+    var file;
+    try {
+      file = await createInvoicePdfFile(id);
+    } catch(err) {
+      console.error(err);
+      alert('Could not create the invoice PDF.');
+      return;
+    }
+
+    var cust = v22Customer(i);
+    var title = 'Invoice ' + (i.number || '');
+    var shareData = {
+      title: title,
+      text: 'Invoice ' + (i.number || '') + ' for ' + money(i.total || 0),
+      files: [file]
+    };
+
+    try {
+      if (navigator.share && (!navigator.canShare || navigator.canShare({files:[file]}))) {
+        await navigator.share(shareData);
+        return;
+      }
+    } catch(err) {
+      if (err && err.name === 'AbortError') return;
+    }
+
+    var url = URL.createObjectURL(file);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = file.name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 3000);
+
+    var subject = title + ' - ' + ((db.settings || {}).companyName || 'Mechanic Mate');
+    var body = 'Hi ' + (cust.name || '') + ',\n\nPlease find invoice ' + (i.number || '') +
+      ' for ' + money(i.total || 0) + '.\n\nThe PDF has been downloaded ready to attach.';
+    setTimeout(function(){
+      window.location.href = 'mailto:' + encodeURIComponent(cust.email || i.email || '') +
+        '?subject=' + encodeURIComponent(subject) +
+        '&body=' + encodeURIComponent(body);
+    }, 500);
+  };
+
+  save();
+  render();
+})();
+</script>
+
 </body></html>
