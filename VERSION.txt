@@ -1,2 +1,2 @@
-Mechanic Mate v25
-Visual refresh: softer blue/grey theme. All v24 functionality and Supabase sync retained.
+Mechanic Mate v26
+Visual polish: removed dark header/tab background slabs and restored orange highlight accents for primary/invoice actions.

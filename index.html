@@ -207,6 +207,84 @@ footer{background:#32698F!important;color:#DDEAF2!important;border-top-color:rgb
 }
 </style>
 
+
+<style>
+/* v26 visual polish */
+
+/* Remove the dark rectangular slabs behind the title/header and tab strip */
+header,.topbar{
+  background:transparent !important;
+  border-bottom:0 !important;
+  box-shadow:none !important;
+}
+nav,.nav{
+  background:transparent !important;
+  border:0 !important;
+  box-shadow:none !important;
+}
+
+/* Keep the title readable directly on the blue background */
+header h1,.topbar h1{
+  color:#fff !important;
+  text-shadow:0 1px 2px rgba(20,55,80,.18);
+}
+header .sub,.topbar .sub{
+  color:#DDEAF2 !important;
+}
+
+/* Tabs stay as individual pale buttons, without a strip behind them */
+nav button,.nav button{
+  box-shadow:0 2px 5px rgba(31,72,99,.12);
+}
+
+/* Orange accent, similar to the earlier theme */
+:root{
+  --action-orange:#FF8A00;
+  --action-orange-dark:#D96F00;
+}
+
+/* Main standout actions */
+button.primary,
+.btn.primary,
+.actions .primary{
+  background:var(--action-orange) !important;
+  color:#172A38 !important;
+  border:0 !important;
+}
+button.primary:active,
+.btn.primary:active{
+  background:var(--action-orange-dark) !important;
+}
+
+/* Invoice-related buttons are especially highlighted */
+button[onclick*="invoiceForm"],
+button[onclick*="viewInvoice"],
+button[onclick*="printShareInvoice"],
+button[onclick*="emailInvoice"]{
+  background:var(--action-orange) !important;
+  color:#172A38 !important;
+}
+
+/* Keep destructive controls red */
+button.danger,.btn.danger,.danger{
+  background:#C84D5A !important;
+  color:#fff !important;
+}
+
+/* Normal utility buttons stay blue */
+button:not(.primary):not(.danger):not(.secondary):not([onclick*="invoiceForm"]):not([onclick*="viewInvoice"]):not([onclick*="printShareInvoice"]):not([onclick*="emailInvoice"]){
+  background:#2F6F9F !important;
+  color:#fff !important;
+}
+
+/* Selected navigation tab gets orange accent */
+nav button.active,.nav button.on{
+  background:var(--action-orange) !important;
+  color:#172A38 !important;
+  border-color:var(--action-orange-dark) !important;
+}
+</style>
+
 </head><body>
 <div class="topbar"><div class="brandtext"><h1>🔧 Mechanic Mate</h1><div class="sub">Private mobile mechanic job manager</div></div><img id="headerLogo" class="app-logo hidden" alt="Company logo"></div><div id="nav" class="nav"></div><main id="app"></main><div id="modal"></div>
 <script>
