@@ -151,6 +151,14 @@
   .parts-table-v20 th:nth-child(2), .parts-table-v20 td:nth-child(2){font-size:9.5px!important}
 }
 </style>
+
+<style>
+.cloud-badge{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--card);padding:6px 9px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap}
+.cloud-badge.ok{color:#63e6b0}.cloud-badge.warn{color:#ffd166}.cloud-badge.off{color:var(--muted)}
+.cloud-card .cloud-status{padding:10px 12px;border-radius:10px;background:#0f1526;border:1px solid var(--line);margin:10px 0;font-size:13px}
+.cloud-card .cloud-email{font-weight:800;overflow-wrap:anywhere}
+@media(max-width:430px){.cloud-badge{font-size:10px;padding:5px 7px}}
+</style>
 </head><body>
 <div class="topbar"><div class="brandtext"><h1>🔧 Mechanic Mate</h1><div class="sub">Private mobile mechanic job manager</div></div><img id="headerLogo" class="app-logo hidden" alt="Company logo"></div><div id="nav" class="nav"></div><main id="app"></main><div id="modal"></div>
 <script>
@@ -160,7 +168,11 @@ db.jobs=Array.isArray(db.jobs)?db.jobs:[];db.customers=Array.isArray(db.customer
 db.jobs.forEach(j=>{if(!Array.isArray(j.partIds))j.partIds=[];if(j.hours==null)j.hours=0});
 db.parts.forEach(p=>{if(p.charge==null)p.charge=Number(p.cost||0)});
 let page='Dashboard';
-const save=()=>localStorage.setItem(KEY,JSON.stringify(db));const money=n=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP'}).format(Number(n)||0);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const gid=()=>crypto.randomUUID();
+function save(){
+  localStorage.setItem(KEY,JSON.stringify(db));
+  localStorage.setItem('mechanic-mate-local-updated-at',new Date().toISOString());
+  if(window.cloudScheduleSave) window.cloudScheduleSave();
+}const money=n=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP'}).format(Number(n)||0);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const gid=()=>crypto.randomUUID();
 const jobLabel=j=>`${j.title||'Untitled'}${j.reg?' • '+j.reg:''}${j.customer?' • '+j.customer:''}`;
 function go(p){page=p;render()}function renderHeader(){const img=document.getElementById('headerLogo');if(db.settings.companyLogo){img.src=db.settings.companyLogo;img.classList.remove('hidden')}else{img.removeAttribute('src');img.classList.add('hidden')}}function render(){renderHeader();nav.innerHTML=['Dashboard','Jobs','Customers','Parts','Invoices','Settings'].map(x=>`<button class="${page===x?'on':''}" onclick="go('${x}')">${x}</button>`).join('');app.innerHTML=({Dashboard:dash,Jobs:jobs,Customers:customers,Parts:parts,Invoices:invoices,Settings:settings}[page])()}
 function dash(){const rev=db.invoices.reduce((a,x)=>a+Number(x.total||0),0),cost=db.parts.reduce((a,x)=>a+Number(x.cost||0),0);return `<div class="grid"><div class="card stat">Jobs<b>${db.jobs.length}</b></div><div class="card stat">Customers<b>${db.customers.length}</b></div><div class="card stat">Invoiced<b>${money(rev)}</b></div><div class="card stat">Profit*<b>${money(rev-cost)}</b></div></div><div class="actions"><button class="primary" onclick="jobForm()">＋ New Job</button><button onclick="invoiceForm()">＋ Invoice</button></div><div class="card"><b>Recent jobs</b>${db.jobs.slice().reverse().slice(0,5).map(jobCard).join('')||'<div class="empty">No jobs yet.</div>'}</div><p class="muted">*Invoices minus recorded parts costs.</p>`}
@@ -1974,6 +1986,457 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
   };
 
   save();
+  render();
+})();
+</script>
+
+
+<script>
+(function(){
+  const SUPABASE_URL = 'https://ikjtezngfnophhjzjedi.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable__Tyf3b3tPIcmdC-JxvUykA_gos5pu9l';
+  const SESSION_KEY = 'mechanic-mate-supabase-session';
+  const LOCAL_UPDATED_KEY = 'mechanic-mate-local-updated-at';
+
+  let cloudSession = null;
+  let cloudSaveTimer = null;
+  let cloudPushBusy = false;
+  let cloudPullBusy = false;
+  let cloudStatus = 'Not signed in';
+  let cloudLastSync = '';
+  let cloudError = '';
+
+  function loadSession(){
+    try{
+      cloudSession = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+    }catch(e){ cloudSession = null; }
+  }
+
+  function storeSession(s){
+    cloudSession = s || null;
+    if(s) localStorage.setItem(SESSION_KEY,JSON.stringify(s));
+    else localStorage.removeItem(SESSION_KEY);
+    updateCloudBadge();
+  }
+
+  function normaliseDb(raw){
+    raw = raw && typeof raw === 'object' ? raw : {};
+    raw.jobs = Array.isArray(raw.jobs) ? raw.jobs : [];
+    raw.customers = Array.isArray(raw.customers) ? raw.customers : [];
+    raw.parts = Array.isArray(raw.parts) ? raw.parts : [];
+    raw.invoices = Array.isArray(raw.invoices) ? raw.invoices : [];
+    raw.settings = raw.settings && typeof raw.settings === 'object' ? raw.settings : {};
+    if(raw.settings.hourlyRate == null) raw.settings.hourlyRate = 45;
+    if(raw.settings.companyName == null) raw.settings.companyName = '';
+    if(raw.settings.companyLogo == null) raw.settings.companyLogo = '';
+    if(raw.settings.companyPhone == null) raw.settings.companyPhone = '';
+    if(raw.settings.companyEmail == null) raw.settings.companyEmail = '';
+    return raw;
+  }
+
+  function localHasUsefulData(){
+    return !!(
+      (db.jobs && db.jobs.length) ||
+      (db.customers && db.customers.length) ||
+      (db.parts && db.parts.length) ||
+      (db.invoices && db.invoices.length) ||
+      (db.settings && (db.settings.companyName || db.settings.companyLogo || db.settings.companyPhone || db.settings.companyEmail))
+    );
+  }
+
+  function sessionExpiresSoon(s){
+    if(!s) return true;
+    let expiry = Number(s.expires_at || 0);
+    if(!expiry && s.expires_in && s.obtained_at) expiry = Number(s.obtained_at) + Number(s.expires_in);
+    return !expiry || (expiry * 1000) < (Date.now() + 60000);
+  }
+
+  async function supabaseRequest(path, opts){
+    opts = opts || {};
+    const headers = Object.assign({
+      'apikey': SUPABASE_KEY,
+      'Content-Type': 'application/json'
+    }, opts.headers || {});
+    if(opts.auth !== false){
+      const s = await ensureSession();
+      if(!s || !s.access_token) throw new Error('Not signed in');
+      headers['Authorization'] = 'Bearer ' + s.access_token;
+    }
+    const res = await fetch(SUPABASE_URL + path, Object.assign({}, opts, {headers}));
+    let body = null;
+    const ct = res.headers.get('content-type') || '';
+    if(ct.includes('application/json')){
+      try{ body = await res.json(); }catch(e){}
+    }else{
+      try{ body = await res.text(); }catch(e){}
+    }
+    if(!res.ok){
+      const msg = body && (body.msg || body.message || body.error_description || body.error) || ('Request failed ('+res.status+')');
+      throw new Error(msg);
+    }
+    return {res, body};
+  }
+
+  async function refreshSession(){
+    if(!cloudSession || !cloudSession.refresh_token) return null;
+    try{
+      const result = await supabaseRequest('/auth/v1/token?grant_type=refresh_token',{
+        method:'POST',
+        auth:false,
+        body:JSON.stringify({refresh_token:cloudSession.refresh_token})
+      });
+      const s = result.body;
+      s.obtained_at = Math.floor(Date.now()/1000);
+      storeSession(s);
+      return s;
+    }catch(e){
+      storeSession(null);
+      cloudStatus = 'Sign in required';
+      cloudError = e.message || '';
+      updateCloudBadge();
+      return null;
+    }
+  }
+
+  async function ensureSession(){
+    if(!cloudSession) return null;
+    if(sessionExpiresSoon(cloudSession)) return await refreshSession();
+    return cloudSession;
+  }
+
+  function getUserId(){
+    return cloudSession && cloudSession.user && cloudSession.user.id || '';
+  }
+
+  function getUserEmail(){
+    return cloudSession && cloudSession.user && cloudSession.user.email || '';
+  }
+
+  function updateCloudBadge(){
+    let badge = document.getElementById('cloudBadge');
+    if(!badge){
+      const top = document.querySelector('.topbar');
+      if(top){
+        badge = document.createElement('div');
+        badge.id = 'cloudBadge';
+        badge.className = 'cloud-badge off';
+        top.appendChild(badge);
+      }
+    }
+    if(!badge) return;
+    if(!cloudSession){
+      badge.className='cloud-badge off';
+      badge.textContent='☁️ Local only';
+    }else if(cloudError){
+      badge.className='cloud-badge warn';
+      badge.textContent='☁️ Sync issue';
+    }else if(cloudPushBusy || cloudPullBusy){
+      badge.className='cloud-badge warn';
+      badge.textContent='☁️ Syncing…';
+    }else{
+      badge.className='cloud-badge ok';
+      badge.textContent='☁️ Synced';
+    }
+  }
+
+  function setCloudState(status,error){
+    cloudStatus = status || '';
+    cloudError = error || '';
+    updateCloudBadge();
+    if(page === 'Settings'){
+      try{ render(); }catch(e){}
+    }
+  }
+
+  async function cloudRow(){
+    const uid = getUserId();
+    if(!uid) return null;
+    const result = await supabaseRequest('/rest/v1/mechanic_mate_data?select=data,updated_at&user_id=eq.'+encodeURIComponent(uid),{
+      method:'GET',
+      headers:{'Accept':'application/json'}
+    });
+    const rows = Array.isArray(result.body) ? result.body : [];
+    return rows[0] || null;
+  }
+
+  async function pushCloudNow(){
+    if(!cloudSession || cloudPushBusy) return false;
+    cloudPushBusy = true;
+    updateCloudBadge();
+    try{
+      const s = await ensureSession();
+      if(!s) return false;
+      const uid = getUserId();
+      if(!uid) return false;
+      const now = new Date().toISOString();
+      await supabaseRequest('/rest/v1/mechanic_mate_data?on_conflict=user_id',{
+        method:'POST',
+        headers:{
+          'Prefer':'resolution=merge-duplicates,return=minimal'
+        },
+        body:JSON.stringify({
+          user_id:uid,
+          data:db,
+          updated_at:now
+        })
+      });
+      cloudLastSync = now;
+      localStorage.setItem(LOCAL_UPDATED_KEY,now);
+      setCloudState('Synced','');
+      return true;
+    }catch(e){
+      console.error('Cloud push failed',e);
+      setCloudState('Sync failed',e.message || 'Could not save to cloud');
+      return false;
+    }finally{
+      cloudPushBusy = false;
+      updateCloudBadge();
+    }
+  }
+
+  window.cloudScheduleSave = function(){
+    if(!cloudSession) return;
+    if(cloudSaveTimer) clearTimeout(cloudSaveTimer);
+    cloudSaveTimer = setTimeout(function(){
+      cloudSaveTimer = null;
+      pushCloudNow();
+    },700);
+  };
+
+  async function applyCloudData(row){
+    if(!row || !row.data) return false;
+    db = normaliseDb(row.data);
+    localStorage.setItem(KEY,JSON.stringify(db));
+    localStorage.setItem(LOCAL_UPDATED_KEY,row.updated_at || new Date().toISOString());
+    cloudLastSync = row.updated_at || '';
+    render();
+    return true;
+  }
+
+  async function pullCloudIfNewer(force){
+    if(!cloudSession || cloudPullBusy || cloudPushBusy || cloudSaveTimer) return false;
+    cloudPullBusy = true;
+    updateCloudBadge();
+    try{
+      const row = await cloudRow();
+      if(!row) return false;
+      const localTime = Date.parse(localStorage.getItem(LOCAL_UPDATED_KEY) || '') || 0;
+      const cloudTime = Date.parse(row.updated_at || '') || 0;
+      if(force || cloudTime > localTime + 500){
+        await applyCloudData(row);
+      }
+      setCloudState('Synced','');
+      return true;
+    }catch(e){
+      console.error('Cloud pull failed',e);
+      setCloudState('Sync failed',e.message || 'Could not load cloud data');
+      return false;
+    }finally{
+      cloudPullBusy = false;
+      updateCloudBadge();
+    }
+  }
+
+  async function firstSyncAfterLogin(){
+    setCloudState('Checking cloud…','');
+    cloudPullBusy = true;
+    updateCloudBadge();
+    try{
+      const row = await cloudRow();
+      cloudPullBusy = false;
+      if(!row){
+        setCloudState('Uploading this device…','');
+        await pushCloudNow();
+        return;
+      }
+
+      const localTime = Date.parse(localStorage.getItem(LOCAL_UPDATED_KEY) || '') || 0;
+      const cloudTime = Date.parse(row.updated_at || '') || 0;
+
+      if(!localHasUsefulData()){
+        await applyCloudData(row);
+        setCloudState('Downloaded cloud data','');
+      }else if(!localTime){
+        // Pre-v23 device with existing data: cloud wins only if it already clearly has useful data.
+        const cloudData = normaliseDb(row.data || {});
+        const cloudHasData = !!(
+          cloudData.jobs.length || cloudData.customers.length || cloudData.parts.length ||
+          cloudData.invoices.length || cloudData.settings.companyName || cloudData.settings.companyLogo
+        );
+        if(cloudHasData){
+          const useCloud = confirm(
+            'Cloud data already exists for this account.\n\n' +
+            'OK = use the cloud copy on this device.\n' +
+            'Cancel = upload this device’s current data to the cloud.'
+          );
+          if(useCloud) await applyCloudData(row);
+          else await pushCloudNow();
+        }else{
+          await pushCloudNow();
+        }
+      }else if(cloudTime > localTime + 500){
+        await applyCloudData(row);
+      }else if(localTime > cloudTime + 500){
+        await pushCloudNow();
+      }
+
+      cloudLastSync = row.updated_at || cloudLastSync;
+      setCloudState('Synced','');
+    }catch(e){
+      cloudPullBusy = false;
+      setCloudState('Sync failed',e.message || 'Could not complete first sync');
+    }finally{
+      updateCloudBadge();
+    }
+  }
+
+  window.cloudSignIn = async function(){
+    const email = String((document.getElementById('cloudEmail')||{}).value || '').trim();
+    const password = String((document.getElementById('cloudPassword')||{}).value || '');
+    if(!email || !password){ alert('Enter your email and password.'); return; }
+    setCloudState('Signing in…','');
+    try{
+      const result = await supabaseRequest('/auth/v1/token?grant_type=password',{
+        method:'POST',
+        auth:false,
+        body:JSON.stringify({email,password})
+      });
+      const s = result.body;
+      s.obtained_at = Math.floor(Date.now()/1000);
+      storeSession(s);
+      await firstSyncAfterLogin();
+      render();
+    }catch(e){
+      setCloudState('Sign in failed',e.message || '');
+      alert('Sign in failed: ' + (e.message || 'Unknown error'));
+    }
+  };
+
+  window.cloudSignUp = async function(){
+    const email = String((document.getElementById('cloudEmail')||{}).value || '').trim();
+    const password = String((document.getElementById('cloudPassword')||{}).value || '');
+    if(!email || !password){ alert('Enter an email and password first.'); return; }
+    if(password.length < 6){ alert('Use a password of at least 6 characters.'); return; }
+    setCloudState('Creating account…','');
+    try{
+      const result = await supabaseRequest('/auth/v1/signup',{
+        method:'POST',
+        auth:false,
+        body:JSON.stringify({email,password})
+      });
+      const body = result.body || {};
+      if(body.access_token){
+        body.obtained_at = Math.floor(Date.now()/1000);
+        storeSession(body);
+        await firstSyncAfterLogin();
+        render();
+        alert('Cloud account created and signed in.');
+      }else{
+        setCloudState('Check your email','');
+        alert('Account created. Supabase requires email confirmation for this project, so check your inbox, confirm the address, then come back and tap Sign in.');
+      }
+    }catch(e){
+      setCloudState('Sign up failed',e.message || '');
+      alert('Could not create account: ' + (e.message || 'Unknown error'));
+    }
+  };
+
+  window.cloudSignOut = function(){
+    if(!confirm('Sign out of cloud sync on this device? Your local copy will stay on this device.')) return;
+    storeSession(null);
+    setCloudState('Not signed in','');
+    render();
+  };
+
+  window.cloudSyncNow = async function(){
+    if(!cloudSession){ alert('Sign in first.'); return; }
+    if(cloudSaveTimer){
+      clearTimeout(cloudSaveTimer);
+      cloudSaveTimer = null;
+      await pushCloudNow();
+    }else{
+      await pullCloudIfNewer(true);
+    }
+    render();
+  };
+
+  window.cloudUploadThisDevice = async function(){
+    if(!cloudSession){ alert('Sign in first.'); return; }
+    if(!confirm('Replace the cloud copy with the data currently on this device?')) return;
+    await pushCloudNow();
+    render();
+  };
+
+  window.cloudDownloadToDevice = async function(){
+    if(!cloudSession){ alert('Sign in first.'); return; }
+    if(!confirm('Replace this device’s local copy with the cloud copy?')) return;
+    await pullCloudIfNewer(true);
+    render();
+  };
+
+  const previousSettings = settings;
+  settings = function(){
+    let cloudHtml = '';
+    if(cloudSession){
+      cloudHtml =
+        '<div class="card cloud-card"><b>Cloud sync</b>' +
+        '<div class="cloud-status"><div class="cloud-email">☁️ ' + esc(getUserEmail()) + '</div>' +
+        '<div class="muted">' + esc(cloudStatus || 'Signed in') +
+        (cloudLastSync ? '<br>Last sync: ' + esc(new Date(cloudLastSync).toLocaleString()) : '') +
+        (cloudError ? '<br>' + esc(cloudError) : '') + '</div></div>' +
+        '<p class="muted">Changes are saved to Supabase automatically and can be opened from your other signed-in devices.</p>' +
+        '<div class="actions"><button class="primary" onclick="cloudSyncNow()">Sync now</button>' +
+        '<button onclick="cloudDownloadToDevice()">Download cloud copy</button>' +
+        '<button onclick="cloudUploadThisDevice()">Upload this device</button>' +
+        '<button class="danger" onclick="cloudSignOut()">Sign out</button></div></div>';
+    }else{
+      cloudHtml =
+        '<div class="card cloud-card"><b>Cloud sync</b>' +
+        '<p class="muted">Sign in with the same account on your phone and PC to use the same Mechanic Mate data on both.</p>' +
+        '<label>Email</label><input id="cloudEmail" type="email" autocomplete="email" placeholder="you@example.com">' +
+        '<label>Password</label><input id="cloudPassword" type="password" autocomplete="current-password" placeholder="Password">' +
+        '<div class="actions"><button class="primary" onclick="cloudSignIn()">Sign in</button>' +
+        '<button onclick="cloudSignUp()">Create cloud account</button></div>' +
+        '<div class="cloud-status"><span class="muted">' + esc(cloudStatus) +
+        (cloudError ? '<br>' + esc(cloudError) : '') + '</span></div></div>';
+    }
+    return cloudHtml + previousSettings();
+  };
+
+  loadSession();
+  updateCloudBadge();
+
+  if(cloudSession){
+    ensureSession().then(function(s){
+      if(s){
+        firstSyncAfterLogin();
+      }
+    });
+  }
+
+  document.addEventListener('visibilitychange',function(){
+    if(document.visibilityState === 'visible' && cloudSession) pullCloudIfNewer(false);
+  });
+  window.addEventListener('focus',function(){
+    if(cloudSession) pullCloudIfNewer(false);
+  });
+  window.addEventListener('online',function(){
+    if(cloudSession){
+      if(cloudSaveTimer){
+        clearTimeout(cloudSaveTimer);
+        cloudSaveTimer = null;
+        pushCloudNow();
+      }else{
+        pullCloudIfNewer(false);
+      }
+    }
+  });
+
+  // Gentle periodic check while the app is open.
+  setInterval(function(){
+    if(cloudSession && document.visibilityState === 'visible') pullCloudIfNewer(false);
+  },60000);
+
   render();
 })();
 </script>

@@ -1,2 +1,2 @@
-Mechanic Mate v22
-PDF fixes: company logo embedded in emailed/shared PDF and header divider moved below payment status.
+Mechanic Mate v23
+Supabase cloud sync: email/password account, automatic upload/download, multi-device sync.
