@@ -159,6 +159,18 @@
 .cloud-card .cloud-email{font-weight:800;overflow-wrap:anywhere}
 @media(max-width:430px){.cloud-badge{font-size:10px;padding:5px 7px}}
 </style>
+
+<style>
+/* v24 stock allocation + customer history */
+.stock-pill{display:inline-block;padding:4px 8px;border:1px solid var(--line);border-radius:999px;font-size:11px;font-weight:800}
+.customer-summary{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.history-job{border-top:1px solid var(--line);padding:12px 0}
+.history-job:first-child{border-top:0}
+.history-title{font-weight:900}
+.vehicle-card{margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#0f1526}
+@media(max-width:520px){.customer-summary{grid-template-columns:1fr}}
+</style>
+
 </head><body>
 <div class="topbar"><div class="brandtext"><h1>🔧 Mechanic Mate</h1><div class="sub">Private mobile mechanic job manager</div></div><img id="headerLogo" class="app-logo hidden" alt="Company logo"></div><div id="nav" class="nav"></div><main id="app"></main><div id="modal"></div>
 <script>
@@ -2437,6 +2449,248 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     if(cloudSession && document.visibilityState === 'visible') pullCloudIfNewer(false);
   },60000);
 
+  render();
+})();
+</script>
+
+
+<script>
+(function(){
+  // v24 migration: saved parts now represent purchased stock.
+  db.parts = (db.parts || []).map(function(p){
+    if(p.stockQty == null){
+      // Existing parts were previously reusable catalogue entries.
+      // Default them to one available item so nothing vanishes during upgrade.
+      p.stockQty = 1;
+    }
+    p.stockQty = Math.max(0, Number(p.stockQty || 0));
+    return p;
+  });
+
+  db.jobs = (db.jobs || []).map(function(j){
+    j.partIds = Array.isArray(j.partIds) ? j.partIds : [];
+    j.partQuantities = j.partQuantities && typeof j.partQuantities === 'object' ? j.partQuantities : {};
+    return j;
+  });
+
+  function allocatedQty(partId){
+    return (db.jobs || []).reduce(function(total,j){
+      if(!(j.partIds || []).includes(partId)) return total;
+      return total + Math.max(0, Number((j.partQuantities || {})[partId] || 0));
+    },0);
+  }
+
+  function availableQty(part){
+    return Math.max(0, Number(part.stockQty || 0) - allocatedQty(part.id));
+  }
+
+  window.partAvailableQty = availableQty;
+
+  // Parts tab = unallocated stock only.
+  parts = function(){
+    var available = (db.parts || []).filter(function(p){ return availableQty(p) > 0; }).slice().reverse();
+    return '<div class="row"><div><h2 style="margin-bottom:2px">Parts</h2><div class="muted">Available / unallocated stock</div></div>' +
+      '<button class="primary" onclick="partForm()">＋ Add</button></div>' +
+      (available.map(function(p){
+        var qty = availableQty(p);
+        return '<div class="card"><div class="row"><div><b>' + esc(p.name) + '</b>' +
+          (p.partNo ? '<div class="muted">Part No: ' + esc(p.partNo) + '</div>' : '') +
+          '</div><span class="stock-pill">Available: ' + qty + '</span></div>' +
+          '<div class="muted">Cost ' + money(p.cost) + ' • Charge ' + money(p.charge != null ? p.charge : p.cost) +
+          (p.supplier ? ' • ' + esc(p.supplier) : '') + '</div>' +
+          '<div class="actions"><button onclick="partForm(\'' + p.id + '\')">Edit</button>' +
+          '<button class="danger" onclick="deletePart(\'' + p.id + '\')">Delete</button></div></div>';
+      }).join('') || '<div class="empty">No unallocated parts. Add purchased parts here and allocate them to jobs as you use them.</div>');
+  };
+
+  // Part form now records how many were purchased / stocked.
+  partForm = function(id, linkJobId){
+    id = id || ''; linkJobId = linkJobId || '';
+    var p = (db.parts || []).find(function(x){ return x.id === id; }) || {};
+    var existingAllocated = p.id ? allocatedQty(p.id) : 0;
+    var stockQty = p.id ? Number(p.stockQty || 0) : 1;
+    openModal(id ? 'Edit Part' : 'Add Purchased Part',
+      '<label>Part / expense</label><input id="pn" value="' + esc(p.name || '') + '">' +
+      '<label>Part No.</label><input id="pno" value="' + esc(p.partNo || '') + '" placeholder="e.g. 038 971 600">' +
+      '<label>Quantity purchased / total stock</label><input id="pstock" type="number" min="' + existingAllocated + '" step="1" value="' + stockQty + '">' +
+      (existingAllocated ? '<div class="muted" style="margin-top:-6px;margin-bottom:10px">' + existingAllocated + ' already allocated to jobs, so total stock cannot be set below that.</div>' : '') +
+      '<div class="two"><div><label>Your cost (£ each)</label><input id="pc" type="number" min="0" step="0.01" value="' + Number(p.cost || 0) + '"></div>' +
+      '<div><label>Customer charge (£ each)</label><input id="pch" type="number" min="0" step="0.01" value="' + Number(p.charge != null ? p.charge : p.cost || 0) + '"></div></div>' +
+      '<label>Supplier</label><input id="ps" value="' + esc(p.supplier || '') + '">' +
+      (linkJobId ? '<label>Quantity to allocate to this job</label><input id="pqty" type="number" min="1" step="1" value="1">' : '') +
+      '<button class="primary" onclick="savePartV24(\'' + id + '\',\'' + linkJobId + '\')">Save' + (linkJobId ? ' & allocate' : '') + '</button>'
+    );
+  };
+
+  window.savePartV24 = function(id, linkJobId){
+    var old = (db.parts || []).find(function(y){ return y.id === id; }) || {};
+    var existingAllocated = old.id ? allocatedQty(old.id) : 0;
+    var requestedStock = Math.max(existingAllocated, Number(pstock.value || 0));
+    var x = {
+      ...old,
+      id: id || gid(),
+      name: pn.value,
+      partNo: pno.value,
+      stockQty: requestedStock,
+      cost: Number(pc.value || 0),
+      charge: Number(pch.value || 0),
+      supplier: ps.value
+    };
+    var idx = db.parts.findIndex(function(y){ return y.id === x.id; });
+    if(idx < 0) db.parts.push(x); else db.parts[idx] = x;
+
+    if(linkJobId){
+      var j = db.jobs.find(function(y){ return y.id === linkJobId; });
+      if(j){
+        j.partIds = Array.isArray(j.partIds) ? j.partIds : [];
+        j.partQuantities = j.partQuantities || {};
+        var qty = Math.max(1,Number((document.getElementById('pqty')||{}).value || 1));
+        // New manual part must contain enough stock for what is being allocated.
+        if(Number(x.stockQty || 0) < qty) x.stockQty = qty;
+        if(!j.partIds.includes(x.id)) j.partIds.push(x.id);
+        j.partQuantities[x.id] = qty;
+      }
+    }
+    save(); closeM(); render();
+  };
+
+  // Job allocation menu only offers available stock plus parts already on this job.
+  jobPartsMenu = function(jobId){
+    var j = (db.jobs || []).find(function(x){ return x.id === jobId; });
+    if(!j) return;
+    var linked = new Set(j.partIds || []);
+    var q = j.partQuantities || {};
+    var candidates = (db.parts || []).filter(function(p){
+      return availableQty(p) > 0 || linked.has(p.id);
+    });
+
+    var body = '<p class="muted">' + esc(jobLabel(j)) + '</p><div class="card"><b>Allocate parts from stock</b>' +
+      '<p class="muted">Parts allocated here disappear from the Parts tab. Remove or reduce them and the quantity becomes available again.</p>';
+
+    if(candidates.length){
+      body += candidates.map(function(p){
+        var checked = linked.has(p.id);
+        var current = Math.max(0,Number(q[p.id] || 0));
+        // Available to this job includes its own current allocation.
+        var maxForJob = availableQty(p) + current;
+        return '<div style="display:grid;grid-template-columns:28px 1fr 76px;gap:9px;align-items:center;padding:10px 0;border-top:1px solid var(--line)">' +
+          '<input type="checkbox" class="jobPartCheck" value="' + p.id + '" ' + (checked ? 'checked' : '') + ' style="width:22px;height:22px;margin:0">' +
+          '<div><b>' + esc(p.name) + '</b>' +
+          (p.partNo ? '<br><span class="muted">Part No: ' + esc(p.partNo) + '</span>' : '') +
+          '<br><span class="muted">Available: ' + maxForJob + ' • Each ' + money(p.charge != null ? p.charge : p.cost) + '</span></div>' +
+          '<div><label>Qty</label><input class="jobPartQty qty-input" data-part-id="' + p.id + '" data-max="' + maxForJob + '" type="number" min="1" max="' + maxForJob + '" step="1" value="' + (current || 1) + '"></div></div>';
+      }).join('');
+    }else{
+      body += '<div class="empty">No unallocated parts available.</div>';
+    }
+
+    body += '<button class="primary" style="width:100%;margin-top:10px" onclick="saveJobPartSelectionV24(\'' + jobId + '\')">Save allocation</button></div>' +
+      '<button style="width:100%;margin-top:10px" onclick="partForm(\'\',\'' + jobId + '\')">＋ Add a newly purchased part</button>';
+    openModal('Parts for this job',body);
+  };
+
+  window.saveJobPartSelectionV24 = function(jobId){
+    var j = (db.jobs || []).find(function(x){ return x.id === jobId; });
+    if(!j) return;
+    var checks = Array.from(document.querySelectorAll('.jobPartCheck:checked'));
+    var newIds = [];
+    var newQ = {};
+
+    for(var i=0;i<checks.length;i++){
+      var ch = checks[i];
+      var inp = document.querySelector('.jobPartQty[data-part-id="' + ch.value + '"]');
+      var max = Math.max(0,Number(inp && inp.dataset.max || 0));
+      var qty = Math.max(1,Number(inp && inp.value || 1));
+      if(qty > max){
+        var part = db.parts.find(function(p){ return p.id === ch.value; });
+        alert((part ? part.name : 'Part') + ': only ' + max + ' available for this job.');
+        return;
+      }
+      newIds.push(ch.value);
+      newQ[ch.value] = qty;
+    }
+
+    j.partIds = newIds;
+    j.partQuantities = newQ;
+    save(); closeM(); render();
+  };
+
+  // Customer list gains a View button.
+  customers = function(){
+    return '<div class="row"><h2>Customers</h2><button class="primary" onclick="customerForm()">＋ Add</button></div>' +
+      ((db.customers || []).map(function(c){
+        var vehicle = [c.make,c.model].filter(Boolean).join(' ');
+        var detail = [c.engineSize,c.reg || c.vehicle].filter(Boolean).join(' • ');
+        var fullVehicle = [vehicle,detail].filter(Boolean).join(' — ');
+        var count = (db.jobs || []).filter(function(j){ return j.customer === c.name; }).length;
+        return '<div class="card"><div class="row"><b>' + esc(c.name) + '</b><span class="stock-pill">' + count + ' job' + (count===1?'':'s') + '</span></div>' +
+          '<div class="muted">' + (c.phone ? esc(c.phone) : '') + (c.email ? '<br>' + esc(c.email) : '') +
+          (fullVehicle ? '<br><b>Vehicle:</b> ' + esc(fullVehicle) : '') + '</div>' +
+          '<div class="actions"><button class="primary" onclick="viewCustomerV24(\'' + c.id + '\')">View</button>' +
+          '<button onclick="customerForm(\'' + c.id + '\')">Edit</button>' +
+          '<button class="danger" onclick="del(\'customers\',\'' + c.id + '\')">Delete</button></div></div>';
+      }).join('') || '<div class="empty">No customers.</div>');
+  };
+
+  function jobInvoice(jobId){
+    return (db.invoices || []).slice().reverse().find(function(i){ return i.jobId === jobId; }) || null;
+  }
+
+  window.viewCustomerV24 = function(customerId){
+    var c = (db.customers || []).find(function(x){ return x.id === customerId; });
+    if(!c) return;
+
+    var jobs = (db.jobs || []).filter(function(j){ return j.customer === c.name; }).slice().sort(function(a,b){
+      return String(b.date || '').localeCompare(String(a.date || ''));
+    });
+
+    // Group job history by registration. Current customer vehicle is included even with no jobs.
+    var regs = {};
+    jobs.forEach(function(j){
+      var key = (j.reg || c.reg || c.vehicle || 'No registration').toUpperCase();
+      if(!regs[key]) regs[key] = [];
+      regs[key].push(j);
+    });
+    var currentReg = (c.reg || c.vehicle || '').toUpperCase();
+    if(currentReg && !regs[currentReg]) regs[currentReg] = [];
+
+    var contact = '<div class="card"><div class="customer-summary"><div><b>' + esc(c.name) + '</b>' +
+      (c.phone ? '<div class="muted">' + esc(c.phone) + '</div>' : '') +
+      (c.email ? '<div class="muted">' + esc(c.email) + '</div>' : '') +
+      (c.address ? '<div class="muted">' + esc(c.address).replace(/\n/g,'<br>') + '</div>' : '') +
+      '</div><div><b>Saved vehicle</b><div class="muted">' +
+      esc([c.make,c.model,c.engineSize].filter(Boolean).join(' ')) +
+      ((c.reg || c.vehicle) ? '<br>' + esc(c.reg || c.vehicle) : '') +
+      '</div></div></div></div>';
+
+    var history = Object.keys(regs).map(function(reg){
+      var list = regs[reg];
+      var exemplar = list[0] || {};
+      var vehicleDesc = [exemplar.make || c.make, exemplar.model || c.model, exemplar.engineSize || c.engineSize].filter(Boolean).join(' ');
+      return '<div class="vehicle-card"><div class="row"><div><b>' + esc(reg) + '</b>' +
+        (vehicleDesc ? '<div class="muted">' + esc(vehicleDesc) + '</div>' : '') +
+        '</div><span class="stock-pill">' + list.length + ' job' + (list.length===1?'':'s') + '</span></div>' +
+        (list.map(function(j){
+          var inv = jobInvoice(j.id);
+          var partLines = typeof window.jobPartLines === 'function' ? window.jobPartLines(j) : [];
+          var partsText = partLines.length ? partLines.map(function(x){ return x.name + ' × ' + x.qty; }).join(', ') : 'No parts';
+          return '<div class="history-job"><div class="row"><div><div class="history-title">' + esc(j.title || 'Job') + '</div>' +
+            '<div class="muted">' + esc(j.date || '') + ' • ' + esc(j.status || '') + '</div></div>' +
+            (inv ? '<span class="stock-pill">' + (inv.paid ? 'Paid' : 'Unpaid') + ' • ' + money(inv.total || 0) + '</span>' : '') +
+            '</div><div class="muted">Time: ' + Number(j.hours || 0) + 'h<br>Parts: ' + esc(partsText) + '</div>' +
+            '<div class="actions"><button onclick="closeM();jobForm(\'' + j.id + '\')">View / Edit Job</button>' +
+            (inv ? '<button onclick="closeM();setPage(\'Invoices\');setTimeout(function(){viewInvoice(\'' + inv.id + '\')},50)">View Invoice</button>' : '') +
+            '</div></div>';
+        }).join('') || '<div class="empty">No jobs recorded for this vehicle yet.</div>') +
+        '</div>';
+    }).join('');
+
+    openModal('Customer History', contact +
+      '<div class="row"><h3>Job History</h3><span class="muted">' + jobs.length + ' total</span></div>' +
+      (history || '<div class="empty">No previous jobs for this customer.</div>'));
+  };
+
+  save();
   render();
 })();
 </script>

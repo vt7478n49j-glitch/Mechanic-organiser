@@ -1,2 +1,2 @@
-Mechanic Mate v23
-Supabase cloud sync: email/password account, automatic upload/download, multi-device sync.
+Mechanic Mate v24
+Parts tab is now unallocated stock with quantity allocation/returns. Customers now have View + vehicle/job history. Supabase sync retained.
