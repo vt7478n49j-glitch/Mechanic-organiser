@@ -1,2 +1,2 @@
-Mechanic Mate v24
-Parts tab is now unallocated stock with quantity allocation/returns. Customers now have View + vehicle/job history. Supabase sync retained.
+Mechanic Mate v25
+Visual refresh: softer blue/grey theme. All v24 functionality and Supabase sync retained.
