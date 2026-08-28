@@ -1,2 +1,2 @@
-Mechanic Mate v27
-Added optional Included Parts/sub-list to saved parts and kits. Included items are shown under the main kit on screen, printed invoices and emailed/shared PDFs. Cloud sync retained.
+Mechanic Mate v28
+Fix: Parts tab rendering restored after included-parts update. Included/sub-parts, stock allocation, invoices, PDF and cloud sync retained.

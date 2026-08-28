@@ -2838,6 +2838,18 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 
 <script>
 (function(){
+  // v28 fix: stock helpers must exist inside this update's scope.
+  function allocatedQtyV28(partId){
+    return (db.jobs || []).reduce(function(total,j){
+      if(!(j.partIds || []).includes(partId)) return total;
+      return total + Math.max(0,Number((j.partQuantities || {})[partId] || 0));
+    },0);
+  }
+
+  function availableQtyV28(part){
+    return Math.max(0,Number(part.stockQty || 0) - allocatedQtyV28(part.id));
+  }
+
   // ---------- migration ----------
   db.parts = (db.parts || []).map(function(p){
     if(!Array.isArray(p.includedParts)) p.includedParts = [];
@@ -2900,7 +2912,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
   partForm = function(id, linkJobId){
     id=id||''; linkJobId=linkJobId||'';
     var p=(db.parts||[]).find(function(x){return x.id===id;})||{};
-    var existingAllocated=p.id?allocatedQty(p.id):0;
+    var existingAllocated=p.id?allocatedQtyV28(p.id):0;
     var stockQty=p.id?Number(p.stockQty||0):1;
     openModal(id?'Edit Part':'Add Purchased Part',
       '<label>Part / expense</label><input id="pn" value="' + esc(p.name||'') + '">' +
@@ -2920,7 +2932,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 
   window.savePartV27=function(id,linkJobId){
     var old=(db.parts||[]).find(function(y){return y.id===id;})||{};
-    var existingAllocated=old.id?allocatedQty(old.id):0;
+    var existingAllocated=old.id?allocatedQtyV28(old.id):0;
     var requestedStock=Math.max(existingAllocated,Number(pstock.value||0));
     var x={
       ...old,
@@ -2951,10 +2963,10 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
   };
 
   parts=function(){
-    var available=(db.parts||[]).filter(function(p){return availableQty(p)>0;}).slice().reverse();
+    var available=(db.parts||[]).filter(function(p){return availableQtyV28(p)>0;}).slice().reverse();
     return '<div class="row"><div><h2 style="margin-bottom:2px">Parts</h2><div class="muted">Available / unallocated stock</div></div><button class="primary" onclick="partForm()">＋ Add</button></div>' +
       (available.map(function(p){
-        var qty=availableQty(p);
+        var qty=availableQtyV28(p);
         return '<div class="card"><div class="row"><div><b>'+esc(p.name)+'</b>' +
           (p.partNo?'<div class="muted">Part No: '+esc(p.partNo)+'</div>':'') +
           '</div><span class="stock-pill">Available: '+qty+'</span></div>' +
