@@ -1,2 +1,2 @@
-Mechanic Mate v26
-Visual polish: removed dark header/tab background slabs and restored orange highlight accents for primary/invoice actions.
+Mechanic Mate v27
+Added optional Included Parts/sub-list to saved parts and kits. Included items are shown under the main kit on screen, printed invoices and emailed/shared PDFs. Cloud sync retained.
