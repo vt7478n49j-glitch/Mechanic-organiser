@@ -1,2 +1,2 @@
-Mechanic Mate v36
-Scheduling improvements: Booked For now opens a visual calendar picker showing existing booked jobs by title. Selecting a day fills the appointment date. The main booked calendar now shows only job titles in date boxes for a cleaner visual diary. All v35 features retained.
+Mechanic Mate v38
+UK booking dates now use DD-MM-YYYY for manual entry and display. The app continues storing the date internally as YYYY-MM-DD for reliable calendar sorting. Includes all v37 fixes.

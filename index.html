@@ -4010,8 +4010,8 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       '<label>Registration</label><input id="jr" value="'+esc(j.reg||'')+'">'+
       '<div class="vehicle-grid"><div><label>Make</label><input id="jmake" value="'+esc(j.make||'')+'"></div><div><label>Model</label><input id="jmodel" value="'+esc(j.model||'')+'"></div></div>'+
       '<label>Engine size / engine</label><input id="jengine" value="'+esc(j.engineSize||'')+'">'+
-      '<div class="two"><div><label>Date Created</label><input id="jd" class="date-safe" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="'+esc(created)+'"></div><div><label>Booked For</label><div class="booking-date-wrap"><input id="jbooked" class="date-safe" type="text" readonly placeholder="Select a date" value="'+esc(j.bookedFor||'')+'" onclick="openBookingDatePickerV36()"><button type="button" onclick="openBookingDatePickerV36()">📅</button></div></div></div>'+
-      '<div class="muted" style="margin-top:-7px;margin-bottom:10px">Booked For is the appointment date used by the schedule/calendar.</div>'+
+      '<div class="two"><div><label>Date Created</label><input id="jd" class="date-safe" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="'+esc(created)+'"></div><div><label>Booked For</label><div class="booking-date-wrap"><input id="jbooked" class="date-safe" type="text" inputmode="numeric" placeholder="DD-MM-YYYY" value="'+esc(bookingDateToUKV38(j.bookedFor||''))+'"><button type="button" aria-label="Open booking calendar" title="Open booking calendar" onclick="openBookingDatePickerV36()">📅</button></div></div></div>'+
+      '<div class="muted" style="margin-top:-7px;margin-bottom:10px">Booked For is the appointment date used by the schedule/calendar. Type DD-MM-YYYY or tap 📅 to choose visually.</div>'+
       '<label>Status</label><select id="js">'+statusOptionsV35(j.status||'Pending')+'</select>'+
       '<div class="muted" style="margin-top:-7px;margin-bottom:10px">You can move a job backwards or forwards at any time. Ready to Invoice means the saved status is Complete and no invoice has been created yet.</div>'+
       '<label>Time spent on job (hours)</label><input id="jh" type="number" inputmode="decimal" min="0" step="0.25" value="'+Number(j.hours||0)+'" placeholder="e.g. 1.5">'+
@@ -4023,7 +4023,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 
   window.saveJob=function(id){
     var old=(db.jobs||[]).find(function(y){return y.id===id;})||{};
-    var booked=(document.getElementById('jbooked')||{}).value||'';
+    var booked=bookingDateToISOV38((document.getElementById('jbooked')||{}).value||'');
     var status=js.value;
     if(status==='Booked'&&!booked){
       if(!confirm('This job is marked Booked but has no Booked For date. Save it without a calendar date?'))return;
@@ -4054,11 +4054,27 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
   window.jumpJobCalendarTodayV35=function(){window.jobCalendarMonth=new Date().toISOString().slice(0,7);render();};
 
 
+  function bookingDateToUKV38(v){
+    if(!v)return '';
+    if(/^\d{4}-\d{2}-\d{2}$/.test(v)){var a=v.split('-');return a[2]+'-'+a[1]+'-'+a[0];}
+    return v;
+  }
+  function bookingDateToISOV38(v){
+    v=(v||'').trim().replace(/\//g,'-');
+    if(/^\d{2}-\d{2}-\d{4}$/.test(v)){var a=v.split('-');return a[2]+'-'+a[1]+'-'+a[0];}
+    return v;
+  }
+  function validBookingDateV38(v){return validDateV35(bookingDateToISOV38(v));}
+
   var bookingPickerMonthV36=null;
 
   window.openBookingDatePickerV36=function(){
     var inp=document.getElementById('jbooked');
-    var base=(inp&&validDateV35(inp.value))?new Date(inp.value+'T12:00:00'):new Date();
+    var base=new Date();
+    if(inp&&validBookingDateV38(inp.value)){
+      var bp=bookingDateToISOV38(inp.value).split('-');
+      base=new Date(+bp[0],+bp[1]-1,+bp[2],12,0,0);
+    }
     bookingPickerMonthV36=new Date(base.getFullYear(),base.getMonth(),1);
     renderBookingDatePickerV36();
   };
@@ -4082,7 +4098,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 
   window.pickBookingDateV36=function(ds){
     var inp=document.getElementById('jbooked');
-    if(inp) inp.value=ds;
+    if(inp) inp.value=bookingDateToUKV38(ds);
     closeBookingDatePickerV36();
   };
 
@@ -4103,8 +4119,9 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     var first=new Date(y,m,1),offset=(first.getDay()+6)%7;
     var gridStart=new Date(y,m,1-offset);
     var inp=document.getElementById('jbooked');
-    var selected=inp?inp.value:'';
-    var today=localDateV35(new Date());
+    var selected=inp?bookingDateToISOV38(inp.value):'';
+    var nowV36=new Date();
+    var today=nowV36.getFullYear()+'-'+String(nowV36.getMonth()+1).padStart(2,'0')+'-'+String(nowV36.getDate()).padStart(2,'0');
 
     var booked=(db.jobs||[]).filter(function(j){
       return j.status==='Booked'&&validDateV35(j.bookedFor);
