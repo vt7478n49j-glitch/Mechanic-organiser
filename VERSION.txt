@@ -1,2 +1,2 @@
-Mechanic Mate v35
-Job scheduling: editable status in either direction, separate Booked For appointment date, Booked calendar and agenda, upcoming bookings on dashboard. All v34 features retained.
+Mechanic Mate v36
+Scheduling improvements: Booked For now opens a visual calendar picker showing existing booked jobs by title. Selecting a day fills the appointment date. The main booked calendar now shows only job titles in date boxes for a cleaner visual diary. All v35 features retained.

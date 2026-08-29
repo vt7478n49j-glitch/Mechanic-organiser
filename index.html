@@ -580,8 +580,31 @@ a{
 /* v35 scheduling */
 .schedule-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0 8px}.schedule-toolbar .month-title{font-weight:900;text-align:center;flex:1;min-width:0}.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}.calendar-head{text-align:center;font-size:11px;color:var(--muted);padding:5px 0;font-weight:800}.calendar-day{min-height:74px;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:6px;min-width:0}.calendar-day.outside{opacity:.38}.calendar-day.today{border-color:var(--accent)}.calendar-day.has-jobs{background:#171b20}.calendar-num{font-size:12px;font-weight:900;margin-bottom:4px}.calendar-job{display:block;width:100%;border:0;border-radius:7px;padding:5px;margin:3px 0;background:#2a1a08;color:#ffb04a;text-align:left;font-size:10px;line-height:1.15;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.booked-date{color:#ffb04a;font-weight:800}.quick-status{margin:0;min-width:145px;width:auto;padding:9px 10px;font-size:13px}@media(max-width:520px){.calendar-grid{gap:3px}.calendar-day{min-height:58px;padding:4px}.calendar-job{font-size:9px;padding:4px}.calendar-num{font-size:11px}.quick-status{width:100%}}
 </style>
+
+<style>
+/* v36 booking date picker */
+.booking-date-wrap{display:flex;gap:8px;align-items:stretch}
+.booking-date-wrap input{flex:1;min-width:0}
+.booking-date-wrap button{flex:0 0 auto}
+#bookingPickerOverlay{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.72);display:flex;align-items:flex-start;justify-content:center;padding:calc(env(safe-area-inset-top) + 18px) 12px 24px;overflow:auto}
+.booking-picker-card{width:min(720px,100%);background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;box-shadow:0 18px 60px rgba(0,0,0,.45)}
+.booking-picker-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.booking-picker-head{text-align:center;color:var(--muted);font-size:11px;font-weight:800;padding:5px 0}
+.booking-picker-day{min-height:74px;border:1px solid var(--line);border-radius:10px;background:#101419;padding:5px;text-align:left;color:var(--text);min-width:0}
+.booking-picker-day.outside{opacity:.38}
+.booking-picker-day.today{border-color:var(--accent)}
+.booking-picker-day.selected{outline:2px solid var(--accent);outline-offset:-2px}
+.booking-picker-day .daynum{font-size:12px;font-weight:900;margin-bottom:4px}
+.booking-picker-job{font-size:9px;line-height:1.15;padding:3px 4px;border-radius:5px;background:#2a1a08;color:#ffb04a;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:520px){
+  .booking-picker-card{padding:10px}
+  .booking-picker-grid{gap:3px}
+  .booking-picker-day{min-height:62px;padding:4px}
+  .booking-picker-job{font-size:8px;padding:2px 3px}
+}
+</style>
 </head><body>
-<div class="topbar"><div class="brandtext"><h1>🔧 Mechanic Mate</h1><div class="sub">Private mobile mechanic job manager</div></div><img id="headerLogo" class="app-logo hidden" alt="Company logo"></div><div id="nav" class="nav"></div><main id="app"></main><div id="modal"></div>
+<div class="topbar"><div class="brandtext"><h1>🔧 Mechanic Mate</h1><div class="sub">Private mobile mechanic job manager</div></div><img id="headerLogo" class="app-logo hidden" alt="Company logo"></div><div id="nav" class="nav"></div><main id="app"></main><div id="modal"></div><div id="bookingPickerHost"></div>
 <script>
 const KEY='mechanic-mate-v2';
 let db=JSON.parse(localStorage.getItem(KEY)||'{}');
@@ -3987,7 +4010,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       '<label>Registration</label><input id="jr" value="'+esc(j.reg||'')+'">'+
       '<div class="vehicle-grid"><div><label>Make</label><input id="jmake" value="'+esc(j.make||'')+'"></div><div><label>Model</label><input id="jmodel" value="'+esc(j.model||'')+'"></div></div>'+
       '<label>Engine size / engine</label><input id="jengine" value="'+esc(j.engineSize||'')+'">'+
-      '<div class="two"><div><label>Date Created</label><input id="jd" class="date-safe" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="'+esc(created)+'"></div><div><label>Booked For</label><input id="jbooked" class="date-safe" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="'+esc(j.bookedFor||'')+'"></div></div>'+
+      '<div class="two"><div><label>Date Created</label><input id="jd" class="date-safe" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="'+esc(created)+'"></div><div><label>Booked For</label><div class="booking-date-wrap"><input id="jbooked" class="date-safe" type="text" readonly placeholder="Select a date" value="'+esc(j.bookedFor||'')+'" onclick="openBookingDatePickerV36()"><button type="button" onclick="openBookingDatePickerV36()">📅</button></div></div></div>'+
       '<div class="muted" style="margin-top:-7px;margin-bottom:10px">Booked For is the appointment date used by the schedule/calendar.</div>'+
       '<label>Status</label><select id="js">'+statusOptionsV35(j.status||'Pending')+'</select>'+
       '<div class="muted" style="margin-top:-7px;margin-bottom:10px">You can move a job backwards or forwards at any time. Ready to Invoice means the saved status is Complete and no invoice has been created yet.</div>'+
@@ -4030,6 +4053,93 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
   window.shiftJobCalendarV35=function(delta){window.jobCalendarMonth=shiftMonthV35(window.jobCalendarMonth,delta);render();};
   window.jumpJobCalendarTodayV35=function(){window.jobCalendarMonth=new Date().toISOString().slice(0,7);render();};
 
+
+  var bookingPickerMonthV36=null;
+
+  window.openBookingDatePickerV36=function(){
+    var inp=document.getElementById('jbooked');
+    var base=(inp&&validDateV35(inp.value))?new Date(inp.value+'T12:00:00'):new Date();
+    bookingPickerMonthV36=new Date(base.getFullYear(),base.getMonth(),1);
+    renderBookingDatePickerV36();
+  };
+
+  window.closeBookingDatePickerV36=function(){
+    var h=document.getElementById('bookingPickerHost');
+    if(h) h.innerHTML='';
+  };
+
+  window.shiftBookingDatePickerV36=function(delta){
+    if(!bookingPickerMonthV36) bookingPickerMonthV36=new Date();
+    bookingPickerMonthV36=new Date(bookingPickerMonthV36.getFullYear(),bookingPickerMonthV36.getMonth()+delta,1);
+    renderBookingDatePickerV36();
+  };
+
+  window.bookingPickerTodayV36=function(){
+    var n=new Date();
+    bookingPickerMonthV36=new Date(n.getFullYear(),n.getMonth(),1);
+    renderBookingDatePickerV36();
+  };
+
+  window.pickBookingDateV36=function(ds){
+    var inp=document.getElementById('jbooked');
+    if(inp) inp.value=ds;
+    closeBookingDatePickerV36();
+  };
+
+  window.clearBookingDateV36=function(){
+    var inp=document.getElementById('jbooked');
+    if(inp) inp.value='';
+    closeBookingDatePickerV36();
+  };
+
+  function renderBookingDatePickerV36(){
+    var host=document.getElementById('bookingPickerHost');
+    if(!host)return;
+    if(!bookingPickerMonthV36){
+      var n0=new Date();bookingPickerMonthV36=new Date(n0.getFullYear(),n0.getMonth(),1);
+    }
+
+    var y=bookingPickerMonthV36.getFullYear(),m=bookingPickerMonthV36.getMonth();
+    var first=new Date(y,m,1),offset=(first.getDay()+6)%7;
+    var gridStart=new Date(y,m,1-offset);
+    var inp=document.getElementById('jbooked');
+    var selected=inp?inp.value:'';
+    var today=localDateV35(new Date());
+
+    var booked=(db.jobs||[]).filter(function(j){
+      return j.status==='Booked'&&validDateV35(j.bookedFor);
+    });
+    var byDate={};
+    booked.forEach(function(j){(byDate[j.bookedFor]||(byDate[j.bookedFor]=[])).push(j);});
+
+    var cells=[];
+    for(var i=0;i<42;i++){
+      var d=new Date(gridStart.getFullYear(),gridStart.getMonth(),gridStart.getDate()+i);
+      var ds=localDateV35(d),outside=d.getMonth()!==m,jobs=byDate[ds]||[];
+      var titles=jobs.map(function(j){
+        return '<div class="booking-picker-job" title="'+esc(j.title||'Job')+'">'+esc(j.title||'Job')+'</div>';
+      }).join('');
+      cells.push(
+        '<button type="button" class="booking-picker-day '+(outside?'outside ':'')+(ds===today?'today ':'')+(ds===selected?'selected':'')+
+        '" onclick="pickBookingDateV36(\''+ds+'\')"><div class="daynum">'+d.getDate()+'</div>'+titles+'</button>'
+      );
+    }
+
+    var title=bookingPickerMonthV36.toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+    host.innerHTML=
+      '<div id="bookingPickerOverlay" onclick="if(event.target===this)closeBookingDatePickerV36()">'+
+        '<div class="booking-picker-card">'+
+          '<div class="row wrap"><div><b>Select Booked Date</b><div class="muted">Existing booked jobs are shown by job title.</div></div><button type="button" onclick="closeBookingDatePickerV36()">✕</button></div>'+
+          '<div class="schedule-toolbar"><button type="button" onclick="shiftBookingDatePickerV36(-1)">‹</button><div class="month-title">'+esc(title)+'</div><button type="button" onclick="shiftBookingDatePickerV36(1)">›</button></div>'+
+          '<div class="booking-picker-grid">'+
+            ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(function(x){return '<div class="booking-picker-head">'+x+'</div>';}).join('')+
+            cells.join('')+
+          '</div>'+
+          '<div class="actions"><button type="button" onclick="bookingPickerTodayV36()">Today</button><button type="button" onclick="clearBookingDateV36()">Clear Date</button></div>'+
+        '</div>'+
+      '</div>';
+  }
+
   function calendarV35(){
     var a=window.jobCalendarMonth.split('-'),y=+a[0],m=+a[1]-1,first=new Date(Date.UTC(y,m,1));
     var start=(first.getUTCDay()+6)%7,count=daysInMonthV35(y,m),prevCount=daysInMonthV35(y,m-1),today=new Date().toISOString().slice(0,10);
@@ -4041,7 +4151,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       if(day<1){out=true;cm=m-1;if(cm<0){cm=11;cy=y-1;}day=prevCount+day;}
       else if(day>count){out=true;day-=count;cm=m+1;if(cm>11){cm=0;cy=y+1;}}
       var ds=cy+'-'+String(cm+1).padStart(2,'0')+'-'+String(day).padStart(2,'0'),dayJobs=byDate[ds]||[];
-      cells.push('<div class="calendar-day '+(out?'outside ':'')+(ds===today?'today ':'')+(dayJobs.length?'has-jobs':'')+'"><div class="calendar-num">'+day+'</div>'+dayJobs.map(function(j){return '<button class="calendar-job" onclick="jobForm(\''+j.id+'\')">'+esc((j.reg?j.reg+' • ':'')+(j.title||'Job'))+'</button>';}).join('')+'</div>');
+      cells.push('<div class="calendar-day '+(out?'outside ':'')+(ds===today?'today ':'')+(dayJobs.length?'has-jobs':'')+'"><div class="calendar-num">'+day+'</div>'+dayJobs.map(function(j){return '<button class="calendar-job" onclick="jobForm(\''+j.id+'\')">'+esc(j.title||'Job')+'</button>';}).join('')+'</div>');
     }
     var title=first.toLocaleDateString('en-GB',{month:'long',year:'numeric',timeZone:'UTC'});
     return '<div class="card"><div class="row wrap"><div><b>Booked Jobs Calendar</b><div class="muted">Only jobs marked Booked appear here.</div></div><button onclick="jumpJobCalendarTodayV35()">Today</button></div><div class="schedule-toolbar"><button onclick="shiftJobCalendarV35(-1)">‹</button><div class="month-title">'+esc(title)+'</div><button onclick="shiftJobCalendarV35(1)">›</button></div><div class="calendar-grid">'+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(function(x){return '<div class="calendar-head">'+x+'</div>';}).join('')+cells.join('')+'</div></div>';
