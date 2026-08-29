@@ -1,2 +1,2 @@
-Mechanic Mate v30
-Quotes: draft/sent/accepted/declined/converted workflow, work-required list, parts/labour pricing, quote preview, print/share PDF, and Convert to Job. Supabase sync retained.
+Mechanic Mate v31
+Quote polish: fixed oversized company logo, added parts-price/availability disclaimer, and 30-day quote validity to preview/print/shared PDF.

@@ -535,6 +535,35 @@ a{
   #quotePrintHost .quote-preview{display:block!important;margin:0;border-radius:0}
 }
 </style>
+
+<style>
+/* v31 quote preview polish */
+.quote-preview .quote-logo{
+  display:block;
+  width:110px !important;
+  height:110px !important;
+  max-width:110px !important;
+  max-height:110px !important;
+  object-fit:contain;
+  margin-bottom:8px;
+}
+.quote-preview .quote-disclaimer{
+  margin-top:20px;
+  padding-top:12px;
+  border-top:1px solid #d7d7d7;
+  font-size:11px;
+  line-height:1.45;
+  color:#555;
+}
+@media(max-width:520px){
+  .quote-preview .quote-logo{
+    width:90px !important;
+    height:90px !important;
+    max-width:90px !important;
+    max-height:90px !important;
+  }
+}
+</style>
 </head><body>
 <div class="topbar"><div class="brandtext"><h1>🔧 Mechanic Mate</h1><div class="sub">Private mobile mechanic job manager</div></div><img id="headerLogo" class="app-logo hidden" alt="Company logo"></div><div id="nav" class="nav"></div><main id="app"></main><div id="modal"></div>
 <script>
@@ -3552,7 +3581,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     }).join('');
     var labour=Number(q.labourHours||0)*Number(q.labourRate||0);
     return '<div class="quote-preview">'+
-      '<div class="row" style="align-items:flex-start"><div>'+(s.companyLogo?'<img class="inv-logo" src="'+s.companyLogo+'" alt="">':'')+
+      '<div class="row" style="align-items:flex-start"><div>'+(s.companyLogo?'<img class="quote-logo" src="'+s.companyLogo+'" alt="Company logo">':'')+
       '<h2 style="margin:4px 0">'+esc(s.companyName||'Mechanic Mate')+'</h2><div class="muted">'+esc(s.companyPhone||'')+(s.companyEmail?'<br>'+esc(s.companyEmail):'')+'</div></div>'+
       '<div style="text-align:right"><h2 style="font-size:30px;margin:0">QUOTATION</h2><b>'+esc(q.number||'')+'</b><br>'+esc(q.date||'')+'<br><b>'+esc(q.status||'Draft')+'</b></div></div>'+
       '<hr><div class="two"><div><h3>QUOTED TO</h3>'+esc(q.customer||'')+(c.address?'<br>'+esc(c.address).replace(/\n/g,'<br>'):'')+(q.email||c.email?'<br>'+esc(q.email||c.email):'')+'</div>'+
@@ -3565,7 +3594,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       (Number(q.other||0)?'<table><tr><td>Other</td><td>'+quoteMoney(q.other)+'</td></tr></table>':'')+
       (q.notes?'<h3>Notes</h3><div>'+esc(q.notes).replace(/\n/g,'<br>')+'</div>':'')+
       '<div class="quote-total">Estimated Total: '+quoteMoney(q.total!=null?q.total:quoteTotal(q))+'</div>'+
-      '<p class="muted">This quotation is an estimate based on the work and parts listed above. Additional work will be discussed before proceeding.</p></div>';
+      '<div class="quote-disclaimer">This quotation is an estimate based on the work and parts listed above. Parts prices are subject to change depending on supplier pricing and availability. Any additional work or significant price changes will be discussed before proceeding.<br><br><b>Quote valid for 30 days from the date shown above.</b></div></div>';
   }
   window.closeQuotePreview=function(){var x=document.getElementById('quotePreview');if(x)x.remove();};
   window.viewQuote=function(id,button){
@@ -3619,6 +3648,12 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     if(Number(q.travel||0)){text(left,y,9,'Call-out / travel',false);rt(y,9,quoteMoney(q.travel),false);y-=16}
     if(Number(q.other||0)){text(left,y,9,'Other',false);rt(y,9,quoteMoney(q.other),false);y-=16}
     y-=4;line();y-=27;rt(y,19,'Estimated Total: '+quoteMoney(q.total!=null?q.total:quoteTotal(q)),true);
+    y-=34;
+    text(left,y,8.2,'Parts prices are subject to change depending on supplier pricing and availability.',false);
+    y-=12;
+    text(left,y,8.2,'Any significant price changes or additional work will be discussed before proceeding.',false);
+    y-=12;
+    text(left,y,8.2,'Quote valid for 30 days from the date shown above.',true);
     var content=cmd.join('\n');
     var objs=[];
     objs[1]='<< /Type /Catalog /Pages 2 0 R >>';
