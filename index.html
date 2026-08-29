@@ -510,7 +510,7 @@ a{
 <style>
 /* v30 quotes */
 .quote-work-row{display:grid;grid-template-columns:1fr 44px;gap:8px;align-items:end;margin:8px 0}
-.quote-part-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,.9fr) 72px minmax(90px,.8fr) 44px;gap:8px;align-items:end;margin:8px 0;padding-top:8px;border-top:1px solid var(--line)}
+.quote-part-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,.8fr) minmax(0,.9fr) 72px minmax(90px,.8fr) 44px;gap:8px;align-items:end;margin:8px 0;padding-top:8px;border-top:1px solid var(--line)}
 .quote-part-row:first-child{border-top:0}
 .quote-preview{background:#F7F8FA!important;color:#111!important;border-radius:16px;padding:18px;margin-top:12px}
 .quote-preview *{box-sizing:border-box}
@@ -978,7 +978,8 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         (lines.map(function(line){
           return '<div class="partline row"><span>' + esc(line.name) + ' × ' + line.qty + '</span><span>' + money(line.total) + '</span></div>';
         }).join('') || '<div class="muted">No parts linked yet.</div>') + '</div>' : '') +
-      '<button class="primary" onclick="saveJob(\'' + (id || '') + '\')">Save job</button>'
+      '<div class="actions"><button class="primary" onclick="saveJob(\'' + (id || '') + '\')">Save job</button>' +
+      (id ? '<button class="danger" onclick="deleteJobV32(\'' + id + '\')">Delete Job</button>' : '') + '</div>'
     );
     if (j.status && document.getElementById('js')) js.value = j.status;
   };
@@ -1428,6 +1429,46 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     window.location.href = 'mailto:' + encodeURIComponent(cust.email || i.email || '') +
       '?subject=' + encodeURIComponent(subject) +
       '&body=' + encodeURIComponent(body);
+  };
+
+
+  window.deleteJobV32=function(id){
+    var j=(db.jobs||[]).find(function(x){return x.id===id;});
+    if(!j){alert('Job not found.');return;}
+    var linkedInvoices=(db.invoices||[]).filter(function(i){return i.jobId===id;});
+    var msg='Are you sure you want to delete this job?\n\n'+
+      (j.title||'Job')+(j.reg?' • '+j.reg:'')+
+      '\n\nAny parts allocated to this job will return to available stock.';
+    if(linkedInvoices.length){
+      msg+='\n\nNote: '+linkedInvoices.length+' linked invoice'+(linkedInvoices.length===1?' will':'s will')+' be kept as historical invoice records.';
+    }
+    if(!confirm(msg))return;
+    db.jobs=db.jobs.filter(function(x){return x.id!==id;});
+    // Keep invoices, but remove the live job link to avoid dangling references.
+    linkedInvoices.forEach(function(i){
+      if(!i.deletedJobSnapshot){
+        i.deletedJobSnapshot={
+          title:j.title||'',
+          reg:j.reg||'',
+          make:j.make||'',
+          model:j.model||'',
+          engineSize:j.engineSize||'',
+          customer:j.customer||''
+        };
+      }
+      i.jobId='';
+    });
+    // If this job came from a quote, allow the quote to be converted again if desired.
+    (db.quotes||[]).forEach(function(q){
+      if(q.convertedJobId===id){
+        q.convertedJobId='';
+        if(q.status==='Converted') q.status='Accepted';
+      }
+    });
+    save();
+    closeM();
+    render();
+    alert('Job deleted.');
   };
 
   save();
@@ -3322,8 +3363,8 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     return {name:billed.name||i.customer||c.name||'',phone:billed.phone||c.phone||'',email:billed.email||i.email||c.email||'',address:billed.address||c.address||''};
   }
   function v27Vehicle(i){
-    var j=(db.jobs||[]).find(function(x){return x.id===i.jobId;})||{},c=(db.customers||[]).find(function(x){return x.name===i.customer;})||{};
-    return {reg:j.reg||c.reg||c.vehicle||'',make:j.make||c.make||'',model:j.model||c.model||'',engineSize:j.engineSize||c.engineSize||'',title:j.title||''};
+    var j=(db.jobs||[]).find(function(x){return x.id===i.jobId;})||{},snap=i.deletedJobSnapshot||{},c=(db.customers||[]).find(function(x){return x.name===i.customer;})||{};
+    return {reg:j.reg||snap.reg||c.reg||c.vehicle||'',make:j.make||snap.make||c.make||'',model:j.model||snap.model||c.model||'',engineSize:j.engineSize||snap.engineSize||c.engineSize||'',title:j.title||snap.title||''};
   }
 
   function invoiceHtmlV27(i){
@@ -3422,7 +3463,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
   }
   function partRows(items){
     items=Array.isArray(items)?items:[];
-    if(!items.length) items=[{name:'',partNo:'',qty:1,unitPrice:0}];
+    if(!items.length) items=[{name:'',partNo:'',supplier:'',qty:1,unitPrice:0}];
     var stockOptions='<option value="">— Saved stock (optional) —</option>'+
       (db.parts||[]).map(function(p){
         return '<option value="'+p.id+'">'+esc(p.name)+(p.partNo?' • '+esc(p.partNo):'')+'</option>';
@@ -3432,6 +3473,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '<div class="qp-name"><label>Part / kit</label><input class="qp-name-input" value="'+esc(x.name||'')+'" placeholder="Part description">'+
         '<select class="qp-stock" onchange="quoteFillPartFromStock(this)" style="margin-top:6px">'+stockOptions+'</select></div>'+
         '<div><label>Part No.</label><input class="qp-partno" value="'+esc(x.partNo||'')+'"></div>'+
+        '<div><label>Supplier</label><input class="qp-supplier" value="'+esc(x.supplier||'')+'" placeholder="e.g. Euro Car Parts"></div>'+
         '<div><label>Qty</label><input class="qp-qty" type="number" min="1" step="1" value="'+Math.max(1,Number(x.qty||1))+'" oninput="quoteRecalc()"></div>'+
         '<div><label>Price each (£)</label><input class="qp-price" type="number" min="0" step="0.01" value="'+Number(x.unitPrice||0)+'" oninput="quoteRecalc()"></div>'+
         '<div class="qp-remove"><button type="button" class="danger" onclick="this.closest(\'.quote-part-row\').remove();quoteRecalc()">×</button></div>'+
@@ -3442,7 +3484,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     var h=document.getElementById('quoteWorkRows');if(h)h.insertAdjacentHTML('beforeend',workRows([{description:''}]));
   };
   window.quoteAddPart=function(){
-    var h=document.getElementById('quotePartRows');if(h)h.insertAdjacentHTML('beforeend',partRows([{name:'',partNo:'',qty:1,unitPrice:0}]));
+    var h=document.getElementById('quotePartRows');if(h)h.insertAdjacentHTML('beforeend',partRows([{name:'',partNo:'',supplier:'',qty:1,unitPrice:0}]));
   };
   window.quoteFillPartFromStock=function(sel){
     var p=(db.parts||[]).find(function(x){return x.id===sel.value;});
@@ -3450,6 +3492,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     var r=sel.closest('.quote-part-row');
     r.querySelector('.qp-name-input').value=p.name||'';
     r.querySelector('.qp-partno').value=p.partNo||'';
+    var sup=r.querySelector('.qp-supplier'); if(sup) sup.value=p.supplier||'';
     r.querySelector('.qp-price').value=Number(p.charge!=null?p.charge:p.cost||0).toFixed(2);
     quoteRecalc();
   };
@@ -3462,9 +3505,10 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     return Array.from(document.querySelectorAll('#quotePartRows .quote-part-row')).map(function(r){
       var name=String((r.querySelector('.qp-name-input')||{}).value||'').trim();
       var partNo=String((r.querySelector('.qp-partno')||{}).value||'').trim();
+      var supplier=String((r.querySelector('.qp-supplier')||{}).value||'').trim();
       var qty=Math.max(1,Number((r.querySelector('.qp-qty')||{}).value||1));
       var unit=Number((r.querySelector('.qp-price')||{}).value||0);
-      return {name:name,partNo:partNo,qty:qty,unitPrice:unit,total:qty*unit};
+      return {name:name,partNo:partNo,supplier:supplier,qty:qty,unitPrice:unit,total:qty*unit};
     }).filter(function(x){return x.name;});
   }
   window.quoteRecalc=function(){
@@ -3577,7 +3621,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     var s=db.settings||{},c=quoteCustomer(q.customer||'');
     var work=(q.workItems||[]).map(function(w){return '<li>'+esc(w.description)+'</li>';}).join('');
     var parts=(q.partLines||[]).map(function(p){
-      return '<tr><td>'+esc(p.name||'Part')+'</td><td>'+esc(p.partNo||'')+'</td><td>'+Number(p.qty||1)+'</td><td>'+quoteMoney(p.unitPrice||0)+'</td><td>'+quoteMoney(p.total||0)+'</td></tr>';
+      return '<tr><td>'+esc(p.name||'Part')+'</td><td>'+esc(p.partNo||'')+'</td><td>'+esc(p.supplier||'')+'</td><td>'+Number(p.qty||1)+'</td><td>'+quoteMoney(p.unitPrice||0)+'</td><td>'+quoteMoney(p.total||0)+'</td></tr>';
     }).join('');
     var labour=Number(q.labourHours||0)*Number(q.labourRate||0);
     return '<div class="quote-preview">'+
@@ -3589,7 +3633,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       (q.title?'<h3>'+esc(q.title)+'</h3>':'')+
       (work?'<h3>Work Required</h3><ul>'+work+'</ul>':'')+
       (labour?'<table><tr><td><b>Estimated labour</b> — '+esc(q.labourHours)+' hours @ '+quoteMoney(q.labourRate)+'/hr</td><td><b>'+quoteMoney(labour)+'</b></td></tr></table>':'')+
-      (parts?'<h3>Parts</h3><table><thead><tr><th>Part</th><th>Part No.</th><th>Qty</th><th>Each</th><th>Total</th></tr></thead><tbody>'+parts+'</tbody></table>':'')+
+      (parts?'<h3>Parts</h3><table><thead><tr><th>Part</th><th>Part No.</th><th>Supplier</th><th>Qty</th><th>Each</th><th>Total</th></tr></thead><tbody>'+parts+'</tbody></table>':'')+
       (Number(q.travel||0)?'<table><tr><td>Call-out / travel</td><td>'+quoteMoney(q.travel)+'</td></tr></table>':'')+
       (Number(q.other||0)?'<table><tr><td>Other</td><td>'+quoteMoney(q.other)+'</td></tr></table>':'')+
       (q.notes?'<h3>Notes</h3><div>'+esc(q.notes).replace(/\n/g,'<br>')+'</div>':'')+
@@ -3644,7 +3688,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     if((q.workItems||[]).length){text(left,y,11,'Work required',true);y-=16;(q.workItems||[]).forEach(function(w){wrap('- '+w.description,9,65,false)})}
     var lab=Number(q.labourHours||0)*Number(q.labourRate||0);
     if(lab){y-=5;text(left,y,10,'Estimated labour: '+q.labourHours+'h @ '+quoteMoney(q.labourRate)+'/hr',true);rt(y,10,quoteMoney(lab),true);y-=22}
-    if((q.partLines||[]).length){text(left,y,11,'Parts',true);y-=18;(q.partLines||[]).forEach(function(p){wrap((p.name||'Part')+(p.partNo?' ['+p.partNo+']':'')+' x'+Number(p.qty||1),9,48,false);rt(y+13,9,quoteMoney(p.total||0),false)})}
+    if((q.partLines||[]).length){text(left,y,11,'Parts',true);y-=18;(q.partLines||[]).forEach(function(p){wrap((p.name||'Part')+(p.partNo?' ['+p.partNo+']':'')+(p.supplier?' - '+p.supplier:'')+' x'+Number(p.qty||1),9,48,false);rt(y+13,9,quoteMoney(p.total||0),false)})}
     if(Number(q.travel||0)){text(left,y,9,'Call-out / travel',false);rt(y,9,quoteMoney(q.travel),false);y-=16}
     if(Number(q.other||0)){text(left,y,9,'Other',false);rt(y,9,quoteMoney(q.other),false);y-=16}
     y-=4;line();y-=27;rt(y,19,'Estimated Total: '+quoteMoney(q.total!=null?q.total:quoteTotal(q)),true);
@@ -3686,17 +3730,87 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     var q=db.quotes.find(function(x){return x.id===id;});if(!q)return;
     if(q.convertedJobId){alert('This quote has already been converted to a job.');return}
     if(!confirm('Convert '+(q.number||'this quote')+' into a new job?'))return;
+
     var work=(q.workItems||[]).map(function(w){return '• '+w.description}).join('\n');
-    var parts=(q.partLines||[]).map(function(p){return '• '+p.name+(p.partNo?' ['+p.partNo+']':'')+' × '+Number(p.qty||1)+' @ '+quoteMoney(p.unitPrice||0)}).join('\n');
-    var note=['Converted from quote '+(q.number||''),work?'Quoted work:\n'+work:'',parts?'Quoted parts/pricing:\n'+parts:'',q.notes||''].filter(Boolean).join('\n\n');
+    var parts=(q.partLines||[]).map(function(p){
+      return '• '+p.name+(p.partNo?' ['+p.partNo+']':'')+(p.supplier?' — '+p.supplier:'')+
+        ' × '+Number(p.qty||1)+' @ '+quoteMoney(p.unitPrice||0);
+    }).join('\n');
+
+    var note=[
+      'Converted from quote '+(q.number||''),
+      work?'Quoted work:\n'+work:'',
+      parts?'Quoted parts/pricing:\n'+parts:'',
+      q.notes||''
+    ].filter(Boolean).join('\n\n');
+
     var j={
-      id:gid(),title:q.title||((q.workItems||[])[0]||{}).description||'Quoted work',
-      customer:q.customer||'',reg:q.reg||'',make:q.make||'',model:q.model||'',engineSize:q.engineSize||'',
-      date:new Date().toISOString().slice(0,10),status:'Booked',location:'',notes:note,
-      hours:Number(q.labourHours||0),partIds:[],partQuantities:{},quoteId:q.id
+      id:gid(),
+      title:q.title||((q.workItems||[])[0]||{}).description||'Quoted work',
+      customer:q.customer||'',
+      reg:q.reg||'',
+      make:q.make||'',
+      model:q.model||'',
+      engineSize:q.engineSize||'',
+      date:new Date().toISOString().slice(0,10),
+      status:'Booked',
+      location:'',
+      notes:note,
+      hours:Number(q.labourHours||0),
+      partIds:[],
+      partQuantities:{},
+      quoteId:q.id
     };
-    db.jobs.push(j);q.status='Converted';q.convertedJobId=j.id;q.convertedAt=new Date().toISOString();
-    save();render();alert('Quote converted to a new job.');
+
+    db.jobs.push(j);
+    q.status='Converted';
+    q.convertedJobId=j.id;
+    q.convertedAt=new Date().toISOString();
+
+    var quotedParts=(q.partLines||[]).filter(function(p){return p && p.name;});
+    var copiedCount=0;
+
+    if(quotedParts.length && !q.quotedPartsAddedToStockAt){
+      var copyToStock=confirm(
+        'Job created.\n\nWould you like to add the '+quotedParts.length+
+        ' quoted part'+(quotedParts.length===1?'':'s')+
+        ' to Parts / unallocated stock?\n\n'+
+        'Name, part number, supplier, quantity and quoted customer price will be copied across. '+
+        'Your actual cost will be left at £0 until you enter what you paid.'
+      );
+
+      if(copyToStock){
+        q.quotedStockPartIds=[];
+        quotedParts.forEach(function(p){
+          var stockPart={
+            id:gid(),
+            name:p.name||'Part',
+            partNo:p.partNo||'',
+            supplier:p.supplier||'',
+            stockQty:Math.max(1,Number(p.qty||1)),
+            cost:0,
+            charge:Number(p.unitPrice||0),
+            includedParts:Array.isArray(p.includedParts)?p.includedParts.map(function(x){return {...x};}):[],
+            sourceQuoteId:q.id,
+            sourceQuoteNumber:q.number||'',
+            addedFromQuote:true
+          };
+          db.parts.push(stockPart);
+          q.quotedStockPartIds.push(stockPart.id);
+          copiedCount++;
+        });
+        q.quotedPartsAddedToStockAt=new Date().toISOString();
+      }
+    }
+
+    save();
+    render();
+
+    if(copiedCount){
+      alert('Quote converted to a new job and '+copiedCount+' quoted part'+(copiedCount===1?' was':'s were')+' added to unallocated stock.');
+    }else{
+      alert('Quote converted to a new job.');
+    }
   };
 
   // ----- integrate nav/dashboard -----
