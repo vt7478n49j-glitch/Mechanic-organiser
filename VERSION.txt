@@ -1,2 +1,2 @@
-Mechanic Mate v29
-Black/charcoal theme with orange highlights, based on the dark mockup. All v28 stock, included-parts, customer history, invoice/PDF and Supabase sync features retained.
+Mechanic Mate v30
+Quotes: draft/sent/accepted/declined/converted workflow, work-required list, parts/labour pricing, quote preview, print/share PDF, and Convert to Job. Supabase sync retained.

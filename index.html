@@ -506,12 +506,41 @@ a{
 }
 </style>
 
+
+<style>
+/* v30 quotes */
+.quote-work-row{display:grid;grid-template-columns:1fr 44px;gap:8px;align-items:end;margin:8px 0}
+.quote-part-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,.9fr) 72px minmax(90px,.8fr) 44px;gap:8px;align-items:end;margin:8px 0;padding-top:8px;border-top:1px solid var(--line)}
+.quote-part-row:first-child{border-top:0}
+.quote-preview{background:#F7F8FA!important;color:#111!important;border-radius:16px;padding:18px;margin-top:12px}
+.quote-preview *{box-sizing:border-box}
+.quote-preview h2,.quote-preview h3,.quote-preview b,.quote-preview strong{color:#111!important}
+.quote-preview .muted{color:#555!important}
+.quote-preview table{width:100%;border-collapse:collapse;margin-top:12px}
+.quote-preview th,.quote-preview td{padding:8px 4px;border-bottom:1px solid #ddd;text-align:left;font-size:12px}
+.quote-preview th:last-child,.quote-preview td:last-child{text-align:right}
+.quote-preview .quote-total{text-align:right;font-size:22px;font-weight:900;margin-top:16px}
+.quote-status{display:inline-block;padding:5px 9px;border-radius:999px;background:#1C2026;border:1px solid #343A43;font-size:11px;font-weight:800}
+.quote-status.accepted,.quote-status.converted{color:#70D795}
+.quote-status.declined{color:#FF7B86}
+.quote-status.sent{color:#FFB54A}
+@media(max-width:520px){
+  .quote-part-row{grid-template-columns:1fr 1fr}
+  .quote-part-row .qp-name{grid-column:1/-1}
+  .quote-part-row .qp-remove{grid-column:2}
+}
+@media print{
+  body.quote-printing > *{display:none!important}
+  #quotePrintHost{display:block!important;position:absolute;inset:0;background:#fff;padding:0}
+  #quotePrintHost .quote-preview{display:block!important;margin:0;border-radius:0}
+}
+</style>
 </head><body>
 <div class="topbar"><div class="brandtext"><h1>🔧 Mechanic Mate</h1><div class="sub">Private mobile mechanic job manager</div></div><img id="headerLogo" class="app-logo hidden" alt="Company logo"></div><div id="nav" class="nav"></div><main id="app"></main><div id="modal"></div>
 <script>
 const KEY='mechanic-mate-v2';
 let db=JSON.parse(localStorage.getItem(KEY)||'{}');
-db.jobs=Array.isArray(db.jobs)?db.jobs:[];db.customers=Array.isArray(db.customers)?db.customers:[];db.parts=Array.isArray(db.parts)?db.parts:[];db.invoices=Array.isArray(db.invoices)?db.invoices:[];db.settings=db.settings||{hourlyRate:45,companyName:'',companyLogo:''};if(db.settings.hourlyRate==null)db.settings.hourlyRate=45;if(db.settings.companyName==null)db.settings.companyName='';if(db.settings.companyLogo==null)db.settings.companyLogo='';
+db.jobs=Array.isArray(db.jobs)?db.jobs:[];db.customers=Array.isArray(db.customers)?db.customers:[];db.parts=Array.isArray(db.parts)?db.parts:[];db.invoices=Array.isArray(db.invoices)?db.invoices:[];db.quotes=Array.isArray(db.quotes)?db.quotes:[];db.settings=db.settings||{hourlyRate:45,companyName:'',companyLogo:''};if(db.settings.hourlyRate==null)db.settings.hourlyRate=45;if(db.settings.companyName==null)db.settings.companyName='';if(db.settings.companyLogo==null)db.settings.companyLogo='';
 db.jobs.forEach(j=>{if(!Array.isArray(j.partIds))j.partIds=[];if(j.hours==null)j.hours=0});
 db.parts.forEach(p=>{if(p.charge==null)p.charge=Number(p.cost||0)});
 let page='Dashboard';
@@ -2382,6 +2411,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     raw.customers = Array.isArray(raw.customers) ? raw.customers : [];
     raw.parts = Array.isArray(raw.parts) ? raw.parts : [];
     raw.invoices = Array.isArray(raw.invoices) ? raw.invoices : [];
+    raw.quotes = Array.isArray(raw.quotes) ? raw.quotes : [];
     raw.settings = raw.settings && typeof raw.settings === 'object' ? raw.settings : {};
     if(raw.settings.hourlyRate == null) raw.settings.hourlyRate = 45;
     if(raw.settings.companyName == null) raw.settings.companyName = '';
@@ -2397,6 +2427,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       (db.customers && db.customers.length) ||
       (db.parts && db.parts.length) ||
       (db.invoices && db.invoices.length) ||
+      (db.quotes && db.quotes.length) ||
       (db.settings && (db.settings.companyName || db.settings.companyLogo || db.settings.companyPhone || db.settings.companyEmail))
     );
   }
@@ -2618,7 +2649,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         const cloudData = normaliseDb(row.data || {});
         const cloudHasData = !!(
           cloudData.jobs.length || cloudData.customers.length || cloudData.parts.length ||
-          cloudData.invoices.length || cloudData.settings.companyName || cloudData.settings.companyLogo
+          cloudData.invoices.length || cloudData.quotes.length || cloudData.settings.companyName || cloudData.settings.companyLogo
         );
         if(cloudHasData){
           const useCloud = confirm(
@@ -3320,6 +3351,336 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     if(!host){host=document.createElement('div');host.id='invoicePrintHost';document.body.appendChild(host);}
     host.innerHTML=invoiceHtmlV27(i);host.style.display='block';
     setTimeout(function(){window.print();setTimeout(function(){host.style.display='none';host.innerHTML='';},750);},100);
+  };
+
+  save();
+  render();
+})();
+</script>
+
+
+<script>
+(function(){
+  db.quotes = Array.isArray(db.quotes) ? db.quotes : [];
+
+  function quoteCustomer(name){
+    return (db.customers||[]).find(function(c){return c.name===name;}) || {};
+  }
+  function quoteMoney(v){ return money(Number(v)||0); }
+  function quoteNo(){
+    var nums=(db.quotes||[]).map(function(q){
+      var m=String(q.number||'').match(/(\d+)$/); return m?Number(m[1]):0;
+    });
+    return 'QUO-'+String((Math.max.apply(null,[0].concat(nums))+1)).padStart(4,'0');
+  }
+  function quoteTotal(q){
+    var labour=Number(q.labourHours||0)*Number(q.labourRate||0);
+    var parts=(q.partLines||[]).reduce(function(a,p){return a+Number(p.total!=null?p.total:(Number(p.qty||1)*Number(p.unitPrice||0)));},0);
+    return labour+parts+Number(q.travel||0)+Number(q.other||0);
+  }
+  function quoteStatusClass(s){return String(s||'Draft').toLowerCase().replace(/\s+/g,'-');}
+  function quotePartsSummary(q){
+    return (q.partLines||[]).map(function(p){return (p.name||'Part')+' × '+Number(p.qty||1);}).join(', ');
+  }
+
+  // ----- form rows -----
+  function workRows(items){
+    items=Array.isArray(items)&&items.length?items:[{description:''}];
+    return items.map(function(x){
+      return '<div class="quote-work-row"><div><label>Work required</label><input class="qw-desc" value="'+esc(x.description||'')+'" placeholder="e.g. Replace front brake pads"></div>'+
+        '<button type="button" class="danger" onclick="this.closest(\'.quote-work-row\').remove()">×</button></div>';
+    }).join('');
+  }
+  function partRows(items){
+    items=Array.isArray(items)?items:[];
+    if(!items.length) items=[{name:'',partNo:'',qty:1,unitPrice:0}];
+    var stockOptions='<option value="">— Saved stock (optional) —</option>'+
+      (db.parts||[]).map(function(p){
+        return '<option value="'+p.id+'">'+esc(p.name)+(p.partNo?' • '+esc(p.partNo):'')+'</option>';
+      }).join('');
+    return items.map(function(x){
+      return '<div class="quote-part-row">'+
+        '<div class="qp-name"><label>Part / kit</label><input class="qp-name-input" value="'+esc(x.name||'')+'" placeholder="Part description">'+
+        '<select class="qp-stock" onchange="quoteFillPartFromStock(this)" style="margin-top:6px">'+stockOptions+'</select></div>'+
+        '<div><label>Part No.</label><input class="qp-partno" value="'+esc(x.partNo||'')+'"></div>'+
+        '<div><label>Qty</label><input class="qp-qty" type="number" min="1" step="1" value="'+Math.max(1,Number(x.qty||1))+'" oninput="quoteRecalc()"></div>'+
+        '<div><label>Price each (£)</label><input class="qp-price" type="number" min="0" step="0.01" value="'+Number(x.unitPrice||0)+'" oninput="quoteRecalc()"></div>'+
+        '<div class="qp-remove"><button type="button" class="danger" onclick="this.closest(\'.quote-part-row\').remove();quoteRecalc()">×</button></div>'+
+      '</div>';
+    }).join('');
+  }
+  window.quoteAddWork=function(){
+    var h=document.getElementById('quoteWorkRows');if(h)h.insertAdjacentHTML('beforeend',workRows([{description:''}]));
+  };
+  window.quoteAddPart=function(){
+    var h=document.getElementById('quotePartRows');if(h)h.insertAdjacentHTML('beforeend',partRows([{name:'',partNo:'',qty:1,unitPrice:0}]));
+  };
+  window.quoteFillPartFromStock=function(sel){
+    var p=(db.parts||[]).find(function(x){return x.id===sel.value;});
+    if(!p)return;
+    var r=sel.closest('.quote-part-row');
+    r.querySelector('.qp-name-input').value=p.name||'';
+    r.querySelector('.qp-partno').value=p.partNo||'';
+    r.querySelector('.qp-price').value=Number(p.charge!=null?p.charge:p.cost||0).toFixed(2);
+    quoteRecalc();
+  };
+  function readQuoteWork(){
+    return Array.from(document.querySelectorAll('#quoteWorkRows .quote-work-row')).map(function(r){
+      return {description:String((r.querySelector('.qw-desc')||{}).value||'').trim()};
+    }).filter(function(x){return x.description;});
+  }
+  function readQuoteParts(){
+    return Array.from(document.querySelectorAll('#quotePartRows .quote-part-row')).map(function(r){
+      var name=String((r.querySelector('.qp-name-input')||{}).value||'').trim();
+      var partNo=String((r.querySelector('.qp-partno')||{}).value||'').trim();
+      var qty=Math.max(1,Number((r.querySelector('.qp-qty')||{}).value||1));
+      var unit=Number((r.querySelector('.qp-price')||{}).value||0);
+      return {name:name,partNo:partNo,qty:qty,unitPrice:unit,total:qty*unit};
+    }).filter(function(x){return x.name;});
+  }
+  window.quoteRecalc=function(){
+    var h=Number((document.getElementById('qhours')||{}).value||0);
+    var r=Number((document.getElementById('qrate')||{}).value||0);
+    var parts=readQuoteParts().reduce(function(a,p){return a+p.total;},0);
+    var travel=Number((document.getElementById('qtravel')||{}).value||0);
+    var other=Number((document.getElementById('qother')||{}).value||0);
+    var el=document.getElementById('qtotal');
+    if(el)el.textContent=quoteMoney(h*r+parts+travel+other);
+  };
+  window.quoteFillCustomer=function(name){
+    var c=quoteCustomer(name);
+    var n=document.getElementById('qcustomer');if(n)n.value=name||'';
+    var e=document.getElementById('qemail');if(e)e.value=c.email||'';
+    var r=document.getElementById('qreg');if(r)r.value=c.reg||c.vehicle||'';
+    var ma=document.getElementById('qmake');if(ma)ma.value=c.make||'';
+    var mo=document.getElementById('qmodel');if(mo)mo.value=c.model||'';
+    var en=document.getElementById('qengine');if(en)en.value=c.engineSize||'';
+  };
+
+  // ----- quote form -----
+  window.quoteForm=function(id){
+    var q=(db.quotes||[]).find(function(x){return x.id===id;})||{};
+    var c=quoteCustomer(q.customer||'');
+    var opts='<option value="">— Select customer —</option>'+(db.customers||[]).map(function(x){
+      return '<option value="'+esc(x.name)+'" '+(x.name===q.customer?'selected':'')+'>'+esc(x.name)+(x.reg?' • '+esc(x.reg):'')+'</option>';
+    }).join('');
+    openModal(id?'Edit Quote':'New Quote',
+      '<label>Quote number</label><input id="qnumber" value="'+esc(q.number||quoteNo())+'">'+
+      '<label>Customer</label><select id="qcustomersel" onchange="quoteFillCustomer(this.value)">'+opts+'</select>'+
+      '<label>Customer name</label><input id="qcustomer" value="'+esc(q.customer||'')+'">'+
+      '<label>Customer email</label><input id="qemail" type="email" value="'+esc(q.email||c.email||'')+'">'+
+      '<label>Quote / job title</label><input id="qtitle" value="'+esc(q.title||'')+'" placeholder="e.g. Full service and front brakes">'+
+      '<div class="two"><div><label>Date</label><input id="qdate" class="date-safe" type="text" placeholder="YYYY-MM-DD" value="'+esc(q.date||new Date().toISOString().slice(0,10))+'"></div>'+
+      '<div><label>Status</label><select id="qstatus"><option>Draft</option><option>Sent</option><option>Accepted</option><option>Declined</option><option>Converted</option></select></div></div>'+
+      '<label>Registration</label><input id="qreg" value="'+esc(q.reg||c.reg||c.vehicle||'')+'">'+
+      '<div class="two"><div><label>Make</label><input id="qmake" value="'+esc(q.make||c.make||'')+'"></div><div><label>Model</label><input id="qmodel" value="'+esc(q.model||c.model||'')+'"></div></div>'+
+      '<label>Engine</label><input id="qengine" value="'+esc(q.engineSize||c.engineSize||'')+'">'+
+      '<div class="card"><div class="row"><b>Work required</b><button type="button" onclick="quoteAddWork()">＋ Add line</button></div><div id="quoteWorkRows">'+workRows(q.workItems||[])+'</div></div>'+
+      '<div class="card"><div class="row"><b>Parts pricing</b><button type="button" onclick="quoteAddPart()">＋ Add part</button></div><p class="muted">Pricing only — these do not consume stock until the quote becomes a job.</p><div id="quotePartRows">'+partRows(q.partLines||[])+'</div></div>'+
+      '<div class="two"><div><label>Estimated labour hours</label><input id="qhours" type="number" min="0" step="0.25" value="'+Number(q.labourHours||0)+'" oninput="quoteRecalc()"></div>'+
+      '<div><label>Labour rate (£/hr)</label><input id="qrate" type="number" min="0" step="0.01" value="'+Number(q.labourRate!=null?q.labourRate:(db.settings.hourlyRate||0))+'" oninput="quoteRecalc()"></div></div>'+
+      '<div class="two"><div><label>Call-out / travel (£)</label><input id="qtravel" type="number" min="0" step="0.01" value="'+Number(q.travel||0)+'" oninput="quoteRecalc()"></div>'+
+      '<div><label>Other (£)</label><input id="qother" type="number" min="0" step="0.01" value="'+Number(q.other||0)+'" oninput="quoteRecalc()"></div></div>'+
+      '<label>Notes</label><textarea id="qnotes">'+esc(q.notes||'')+'</textarea>'+
+      '<div class="row"><b>Estimated total</b><b id="qtotal">'+quoteMoney(quoteTotal(q))+'</b></div>'+
+      '<button class="primary" onclick="saveQuote(\''+(id||'')+'\')">Save Quote</button>'
+    );
+    if(q.status && document.getElementById('qstatus'))qstatus.value=q.status;
+    setTimeout(quoteRecalc,0);
+  };
+
+  window.saveQuote=function(id){
+    var old=(db.quotes||[]).find(function(x){return x.id===id;})||{};
+    var parts=readQuoteParts(),work=readQuoteWork();
+    var q={
+      ...old,
+      id:id||gid(),
+      number:qnumber.value.trim()||quoteNo(),
+      customer:qcustomer.value.trim(),
+      customerId:(quoteCustomer(qcustomer.value.trim())||{}).id||'',
+      email:qemail.value.trim(),
+      title:qtitle.value.trim(),
+      date:qdate.value.trim(),
+      status:qstatus.value,
+      reg:qreg.value.trim(),
+      make:qmake.value.trim(),
+      model:qmodel.value.trim(),
+      engineSize:qengine.value.trim(),
+      workItems:work,
+      partLines:parts,
+      labourHours:Number(qhours.value||0),
+      labourRate:Number(qrate.value||0),
+      travel:Number(qtravel.value||0),
+      other:Number(qother.value||0),
+      notes:qnotes.value.trim()
+    };
+    q.total=quoteTotal(q);
+    var idx=db.quotes.findIndex(function(x){return x.id===q.id;});
+    if(idx<0)db.quotes.push(q);else db.quotes[idx]=q;
+    save();closeM();render();
+  };
+
+  // ----- list / status -----
+  window.setQuoteStatus=function(id,status){
+    var q=db.quotes.find(function(x){return x.id===id;});if(!q)return;
+    q.status=status;save();render();
+  };
+  function quoteCard(q){
+    return '<div class="card"><div class="row"><div><b>'+esc(q.number||'Quote')+' • '+esc(q.title||'Untitled quote')+'</b><div class="muted">'+esc(q.customer||'No customer')+' • '+esc(q.reg||'No reg')+' • '+esc(q.date||'')+'</div></div>'+
+      '<span class="quote-status '+quoteStatusClass(q.status)+'">'+esc(q.status||'Draft')+'</span></div>'+
+      '<div class="row" style="margin-top:8px"><span class="muted">'+(q.workItems||[]).length+' work item'+((q.workItems||[]).length===1?'':'s')+' • '+(q.partLines||[]).length+' part line'+((q.partLines||[]).length===1?'':'s')+'</span><b>'+quoteMoney(q.total!=null?q.total:quoteTotal(q))+'</b></div>'+
+      '<div class="actions"><button class="primary" onclick="viewQuote(\''+q.id+'\',this)">View</button><button onclick="quoteForm(\''+q.id+'\')">Edit</button>'+
+      (q.status==='Draft'?'<button onclick="setQuoteStatus(\''+q.id+'\',\'Sent\')">Mark Sent</button>':'')+
+      (q.status!=='Converted'&&q.status!=='Declined'?'<button class="primary" onclick="convertQuoteToJob(\''+q.id+'\')">Convert to Job</button>':'')+
+      '<button class="danger" onclick="deleteQuote(\''+q.id+'\')">Delete</button></div></div>';
+  }
+  window.quotes=function(){
+    return '<div class="row"><div><h2 style="margin-bottom:2px">Quotes</h2><div class="muted">Draft, price and convert approved work into jobs</div></div><button class="primary" onclick="quoteForm()">＋ New Quote</button></div>'+
+      ((db.quotes||[]).slice().reverse().map(quoteCard).join('')||'<div class="empty">No quotes yet.</div>');
+  };
+  window.deleteQuote=function(id){
+    if(!confirm('Delete this quote?'))return;
+    db.quotes=db.quotes.filter(function(q){return q.id!==id;});save();render();
+  };
+
+  // ----- quote preview -----
+  function quotePreviewHtml(q){
+    var s=db.settings||{},c=quoteCustomer(q.customer||'');
+    var work=(q.workItems||[]).map(function(w){return '<li>'+esc(w.description)+'</li>';}).join('');
+    var parts=(q.partLines||[]).map(function(p){
+      return '<tr><td>'+esc(p.name||'Part')+'</td><td>'+esc(p.partNo||'')+'</td><td>'+Number(p.qty||1)+'</td><td>'+quoteMoney(p.unitPrice||0)+'</td><td>'+quoteMoney(p.total||0)+'</td></tr>';
+    }).join('');
+    var labour=Number(q.labourHours||0)*Number(q.labourRate||0);
+    return '<div class="quote-preview">'+
+      '<div class="row" style="align-items:flex-start"><div>'+(s.companyLogo?'<img class="inv-logo" src="'+s.companyLogo+'" alt="">':'')+
+      '<h2 style="margin:4px 0">'+esc(s.companyName||'Mechanic Mate')+'</h2><div class="muted">'+esc(s.companyPhone||'')+(s.companyEmail?'<br>'+esc(s.companyEmail):'')+'</div></div>'+
+      '<div style="text-align:right"><h2 style="font-size:30px;margin:0">QUOTATION</h2><b>'+esc(q.number||'')+'</b><br>'+esc(q.date||'')+'<br><b>'+esc(q.status||'Draft')+'</b></div></div>'+
+      '<hr><div class="two"><div><h3>QUOTED TO</h3>'+esc(q.customer||'')+(c.address?'<br>'+esc(c.address).replace(/\n/g,'<br>'):'')+(q.email||c.email?'<br>'+esc(q.email||c.email):'')+'</div>'+
+      '<div><h3>VEHICLE</h3>'+esc(q.reg||'')+'<br>'+esc([q.make,q.model,q.engineSize].filter(Boolean).join(' '))+'</div></div>'+
+      (q.title?'<h3>'+esc(q.title)+'</h3>':'')+
+      (work?'<h3>Work Required</h3><ul>'+work+'</ul>':'')+
+      (labour?'<table><tr><td><b>Estimated labour</b> — '+esc(q.labourHours)+' hours @ '+quoteMoney(q.labourRate)+'/hr</td><td><b>'+quoteMoney(labour)+'</b></td></tr></table>':'')+
+      (parts?'<h3>Parts</h3><table><thead><tr><th>Part</th><th>Part No.</th><th>Qty</th><th>Each</th><th>Total</th></tr></thead><tbody>'+parts+'</tbody></table>':'')+
+      (Number(q.travel||0)?'<table><tr><td>Call-out / travel</td><td>'+quoteMoney(q.travel)+'</td></tr></table>':'')+
+      (Number(q.other||0)?'<table><tr><td>Other</td><td>'+quoteMoney(q.other)+'</td></tr></table>':'')+
+      (q.notes?'<h3>Notes</h3><div>'+esc(q.notes).replace(/\n/g,'<br>')+'</div>':'')+
+      '<div class="quote-total">Estimated Total: '+quoteMoney(q.total!=null?q.total:quoteTotal(q))+'</div>'+
+      '<p class="muted">This quotation is an estimate based on the work and parts listed above. Additional work will be discussed before proceeding.</p></div>';
+  }
+  window.closeQuotePreview=function(){var x=document.getElementById('quotePreview');if(x)x.remove();};
+  window.viewQuote=function(id,button){
+    var q=db.quotes.find(function(x){return x.id===id;});if(!q)return;
+    closeQuotePreview();
+    var host=document.createElement('div');host.id='quotePreview';
+    host.innerHTML='<div class="actions"><button class="secondary" onclick="closeQuotePreview()">Close</button><button class="primary" onclick="printQuote(\''+id+'\')">Print / Save PDF</button><button class="primary" onclick="shareQuotePdf(\''+id+'\')">Email / Share PDF</button></div>'+quotePreviewHtml(q);
+    var card=button&&button.closest?button.closest('.card'):document.getElementById('app');
+    card.appendChild(host);
+    try{host.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){host.scrollIntoView();}
+  };
+  window.printQuote=function(id){
+    var q=db.quotes.find(function(x){return x.id===id;});if(!q)return;
+    var h=document.getElementById('quotePrintHost');
+    if(!h){h=document.createElement('div');h.id='quotePrintHost';document.body.appendChild(h);}
+    h.innerHTML=quotePreviewHtml(q);h.style.display='block';document.body.classList.add('quote-printing');
+    setTimeout(function(){window.print();setTimeout(function(){document.body.classList.remove('quote-printing');h.style.display='none';h.innerHTML='';},700);},80);
+  };
+
+  // ----- simple downloadable/shareable quote PDF -----
+  function pdfEsc(s){
+    return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)').replace(/£/g,'\\243').replace(/[–—]/g,'-').replace(/[^\x20-\x7E\\]/g,'');
+  }
+  function wrapTxt(t,n){
+    var out=[],line='';String(t||'').split(/\s+/).forEach(function(w){var x=line?line+' '+w:w;if(x.length>n&&line){out.push(line);line=w}else line=x});if(line)out.push(line);return out;
+  }
+  function quotePdfBlob(q){
+    var s=db.settings||{},left=46,right=549,y=790,cmd=[];
+    function text(x,yy,size,v,b){cmd.push('BT /'+(b?'F2':'F1')+' '+size+' Tf 1 0 0 1 '+x+' '+yy+' Tm ('+pdfEsc(v)+') Tj ET')}
+    function rt(yy,size,v,b){var a=String(v||'').length*size*.52;text(Math.max(left,right-a),yy,size,v,b)}
+    function line(){cmd.push('0.6 w '+left+' '+y+' m '+right+' '+y+' l S')}
+    function ensure(n){if(y-n<55){/* one-page quote fallback: compact */}}
+    function wrap(v,size,max,b){wrapTxt(v,max).forEach(function(x){text(left,y,size,x,b);y-=size+4})}
+    text(left,y,20,s.companyName||'Mechanic Mate',true);rt(y,25,'QUOTATION',true);y-=26;
+    if(s.companyPhone){text(left,y,9,s.companyPhone,false);y-=13}
+    if(s.companyEmail){text(left,y,9,s.companyEmail,false);y-=13}
+    rt(756,11,q.number||'',true);rt(739,10,q.date||'',false);rt(720,10,q.status||'Draft',true);
+    y=695;line();y-=24;
+    text(left,y,12,'QUOTED TO',true);y-=18;wrap(q.customer||'',10,55,false);
+    var c=quoteCustomer(q.customer||'');if(c.address){String(c.address).split(/\n/).forEach(function(a){wrap(a,9,62,false)})}
+    if(q.email||c.email){wrap(q.email||c.email,9,62,false)}
+    y-=5;line();y-=24;
+    text(left,y,12,'VEHICLE / WORK',true);y-=18;
+    if(q.reg){text(left,y,10,'Registration: '+q.reg,false);y-=15}
+    var vd=[q.make,q.model,q.engineSize].filter(Boolean).join(' ');if(vd)wrap(vd,10,58,false);
+    if(q.title){wrap(q.title,11,55,true);y-=3}
+    if((q.workItems||[]).length){text(left,y,11,'Work required',true);y-=16;(q.workItems||[]).forEach(function(w){wrap('- '+w.description,9,65,false)})}
+    var lab=Number(q.labourHours||0)*Number(q.labourRate||0);
+    if(lab){y-=5;text(left,y,10,'Estimated labour: '+q.labourHours+'h @ '+quoteMoney(q.labourRate)+'/hr',true);rt(y,10,quoteMoney(lab),true);y-=22}
+    if((q.partLines||[]).length){text(left,y,11,'Parts',true);y-=18;(q.partLines||[]).forEach(function(p){wrap((p.name||'Part')+(p.partNo?' ['+p.partNo+']':'')+' x'+Number(p.qty||1),9,48,false);rt(y+13,9,quoteMoney(p.total||0),false)})}
+    if(Number(q.travel||0)){text(left,y,9,'Call-out / travel',false);rt(y,9,quoteMoney(q.travel),false);y-=16}
+    if(Number(q.other||0)){text(left,y,9,'Other',false);rt(y,9,quoteMoney(q.other),false);y-=16}
+    y-=4;line();y-=27;rt(y,19,'Estimated Total: '+quoteMoney(q.total!=null?q.total:quoteTotal(q)),true);
+    var content=cmd.join('\n');
+    var objs=[];
+    objs[1]='<< /Type /Catalog /Pages 2 0 R >>';
+    objs[2]='<< /Type /Pages /Kids [5 0 R] /Count 1 >>';
+    objs[3]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+    objs[4]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+    objs[5]='<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 6 0 R >>';
+    objs[6]='<< /Length '+content.length+' >>\nstream\n'+content+'\nendstream';
+    var pdf='%PDF-1.4\n%\xE2\xE3\xCF\xD3\n',offs=[0];
+    for(var i=1;i<objs.length;i++){offs[i]=pdf.length;pdf+=i+' 0 obj\n'+objs[i]+'\nendobj\n'}
+    var xr=pdf.length;pdf+='xref\n0 '+objs.length+'\n0000000000 65535 f \n';
+    for(var k=1;k<objs.length;k++)pdf+=String(offs[k]).padStart(10,'0')+' 00000 n \n';
+    pdf+='trailer\n<< /Size '+objs.length+' /Root 1 0 R >>\nstartxref\n'+xr+'\n%%EOF';
+    var bytes=new Uint8Array(pdf.length);for(var b=0;b<pdf.length;b++)bytes[b]=pdf.charCodeAt(b)&255;
+    return new Blob([bytes],{type:'application/pdf'});
+  }
+  window.shareQuotePdf=async function(id){
+    var q=db.quotes.find(function(x){return x.id===id;});if(!q)return;
+    var blob=quotePdfBlob(q),name=String(q.number||'quote').replace(/[^A-Za-z0-9_-]+/g,'-')+'.pdf',file=new File([blob],name,{type:'application/pdf'});
+    try{
+      if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]}))){
+        await navigator.share({title:'Quote '+(q.number||''),text:'Quotation '+(q.number||'')+' for '+quoteMoney(q.total||0),files:[file]});return;
+      }
+    }catch(e){if(e&&e.name==='AbortError')return}
+    var u=URL.createObjectURL(file),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u)},3000);
+  };
+
+  // ----- convert to job -----
+  window.convertQuoteToJob=function(id){
+    var q=db.quotes.find(function(x){return x.id===id;});if(!q)return;
+    if(q.convertedJobId){alert('This quote has already been converted to a job.');return}
+    if(!confirm('Convert '+(q.number||'this quote')+' into a new job?'))return;
+    var work=(q.workItems||[]).map(function(w){return '• '+w.description}).join('\n');
+    var parts=(q.partLines||[]).map(function(p){return '• '+p.name+(p.partNo?' ['+p.partNo+']':'')+' × '+Number(p.qty||1)+' @ '+quoteMoney(p.unitPrice||0)}).join('\n');
+    var note=['Converted from quote '+(q.number||''),work?'Quoted work:\n'+work:'',parts?'Quoted parts/pricing:\n'+parts:'',q.notes||''].filter(Boolean).join('\n\n');
+    var j={
+      id:gid(),title:q.title||((q.workItems||[])[0]||{}).description||'Quoted work',
+      customer:q.customer||'',reg:q.reg||'',make:q.make||'',model:q.model||'',engineSize:q.engineSize||'',
+      date:new Date().toISOString().slice(0,10),status:'Booked',location:'',notes:note,
+      hours:Number(q.labourHours||0),partIds:[],partQuantities:{},quoteId:q.id
+    };
+    db.jobs.push(j);q.status='Converted';q.convertedJobId=j.id;q.convertedAt=new Date().toISOString();
+    save();render();alert('Quote converted to a new job.');
+  };
+
+  // ----- integrate nav/dashboard -----
+  window.render=function(){
+    renderHeader();
+    var tabs=['Dashboard','Jobs','Quotes','Customers','Parts','Invoices','Settings'];
+    nav.innerHTML=tabs.map(function(x){return '<button class="'+(page===x?'on':'')+'" onclick="go(\''+x+'\')">'+x+'</button>';}).join('');
+    var views={Dashboard:dash,Jobs:jobs,Quotes:quotes,Customers:customers,Parts:parts,Invoices:invoices,Settings:settings};
+    var fn=views[page]||dash;
+    app.innerHTML=fn();
+  };
+
+  var oldDash=dash;
+  window.dash=function(){
+    var base=oldDash();
+    return base.replace(
+      '<div class="actions"><button class="primary" onclick="jobForm()">＋ New Job</button><button onclick="invoiceForm()">＋ Invoice</button></div>',
+      '<div class="actions"><button class="primary" onclick="jobForm()">＋ New Job</button><button class="primary" onclick="quoteForm()">＋ Quote</button><button onclick="invoiceForm()">＋ Invoice</button></div>'
+    );
   };
 
   save();
