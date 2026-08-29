@@ -564,6 +564,17 @@ a{
   }
 }
 </style>
+
+<style>
+/* v34 job workflow */
+.job-filter-bar{display:flex;gap:8px;overflow-x:auto;padding:4px 0 12px;scrollbar-width:none}
+.job-filter-bar::-webkit-scrollbar{display:none}
+.job-filter-bar button{white-space:nowrap;flex:0 0 auto}
+.job-filter-bar button.on{background:#2A1A08!important;color:#FF9B21!important;border-color:#A85D00!important}
+.attention-card{border-color:#7A4B12!important}
+.attention-card .attention-title{color:#FFB54A!important}
+.status-ready{color:#FFB54A!important}
+</style>
 </head><body>
 <div class="topbar"><div class="brandtext"><h1>🔧 Mechanic Mate</h1><div class="sub">Private mobile mechanic job manager</div></div><img id="headerLogo" class="app-logo hidden" alt="Company logo"></div><div id="nav" class="nav"></div><main id="app"></main><div id="modal"></div>
 <script>
@@ -594,7 +605,7 @@ function saveBusinessSettings(){db.settings.companyName=companyName.value.trim()
 function removeLogo(){if(confirm('Remove the saved company logo?')){db.settings.companyLogo='';save();render()}}
 function openModal(title,body){modal.innerHTML=`<div class="card"><div class="row"><h2>${title}</h2><button onclick="closeM()">✕</button></div>${body}</div>`}function closeM(){modal.innerHTML=''}
 function customerOptions(selected=''){return `<option value="">— Select customer —</option>`+db.customers.map(c=>`<option value="${esc(c.name)}" ${c.name===selected?'selected':''}>${esc(c.name)}${c.vehicle?' • '+esc(c.vehicle):''}</option>`).join('')}
-function jobForm(id){let j=db.jobs.find(x=>x.id===id)||{};const ps=linkedParts(j);openModal(id?'Edit Job':'New Job',`<label>Job title</label><input id="jt" value="${esc(j.title)}"><label>Customer</label><select id="jcsel" onchange="jcmanual.value=this.value">${customerOptions(j.customer||'')}</select><label>Customer name (or type manually)</label><input id="jcmanual" value="${esc(j.customer)}"><label>Registration</label><input id="jr" value="${esc(j.reg)}"><label>Date</label><input id="jd" class="date-safe" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="${j.date||new Date().toISOString().slice(0,10)}"><label>Status</label><select id="js"><option>Open</option><option>Booked</option><option>In progress</option><option>Complete</option><option>Invoiced</option><option>Paid</option><option>Cancelled</option></select><label>Time spent on job (hours)</label><input id="jh" type="number" inputmode="decimal" min="0" step="0.25" value="${Number(j.hours||0)}" placeholder="e.g. 1.5"><div class="muted" style="margin-top:-6px;margin-bottom:10px">Labour is calculated automatically using your hourly rate in Settings.</div><label>Location</label><input id="jl" value="${esc(j.location)}"><label>Notes</label><textarea id="jn">${esc(j.notes)}</textarea>${id?`<div class="card"><div class="row"><b>Linked parts</b><button class="primary" onclick="jobPartsMenu('${id}')">＋ Add / Select Parts</button></div>${ps.map(p=>`<div class="partline row"><span>${esc(p.name)}</span><span>${money(p.charge||p.cost)}</span></div>`).join('')||'<div class="muted">No parts linked yet.</div>'}</div>`:''}<button class="primary" onclick="saveJob('${id||''}')">Save job</button>`);if(j.status)js.value=j.status}
+function jobForm(id){let j=db.jobs.find(x=>x.id===id)||{};const ps=linkedParts(j);openModal(id?'Edit Job':'New Job',`<label>Job title</label><input id="jt" value="${esc(j.title)}"><label>Customer</label><select id="jcsel" onchange="jcmanual.value=this.value">${customerOptions(j.customer||'')}</select><label>Customer name (or type manually)</label><input id="jcmanual" value="${esc(j.customer)}"><label>Registration</label><input id="jr" value="${esc(j.reg)}"><label>Date</label><input id="jd" class="date-safe" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="${j.date||new Date().toISOString().slice(0,10)}"><label>Status</label><select id="js"><option>Pending</option><option>Booked</option><option>In progress</option><option>Complete</option><option>Invoiced</option><option>Paid</option><option>Cancelled</option></select><label>Time spent on job (hours)</label><input id="jh" type="number" inputmode="decimal" min="0" step="0.25" value="${Number(j.hours||0)}" placeholder="e.g. 1.5"><div class="muted" style="margin-top:-6px;margin-bottom:10px">Labour is calculated automatically using your hourly rate in Settings.</div><label>Location</label><input id="jl" value="${esc(j.location)}"><label>Notes</label><textarea id="jn">${esc(j.notes)}</textarea>${id?`<div class="card"><div class="row"><b>Linked parts</b><button class="primary" onclick="jobPartsMenu('${id}')">＋ Add / Select Parts</button></div>${ps.map(p=>`<div class="partline row"><span>${esc(p.name)}</span><span>${money(p.charge||p.cost)}</span></div>`).join('')||'<div class="muted">No parts linked yet.</div>'}</div>`:''}<button class="primary" onclick="saveJob('${id||''}')">Save job</button>`);if(j.status)js.value=j.status}
 function saveJob(id){let old=db.jobs.find(y=>y.id===id)||{};let x={...old,id:id||gid(),title:jt.value,customer:jcmanual.value,reg:jr.value,date:jd.value,status:js.value,location:jl.value,notes:jn.value,hours:Number(jh.value||0),partIds:old.partIds||[]},i=db.jobs.findIndex(y=>y.id===x.id);i<0?db.jobs.push(x):db.jobs[i]=x;save();closeM();render()}
 function customerForm(id){let c=db.customers.find(x=>x.id===id)||{};openModal(id?'Edit Customer':'New Customer',`<label>Name</label><input id="cn" value="${esc(c.name)}"><label>Phone</label><input id="cp" value="${esc(c.phone)}"><label>Email</label><input id="ce" type="email" value="${esc(c.email||'')}"><label>Vehicle / Reg</label><input id="cv" value="${esc(c.vehicle)}"><label>Address</label><textarea id="ca">${esc(c.address)}</textarea><button class="primary" onclick="saveCustomer('${id||''}')">Save</button>`)}
 function saveCustomer(id){let x={id:id||gid(),name:cn.value,phone:cp.value,email:ce.value,vehicle:cv.value,address:ca.value},i=db.customers.findIndex(y=>y.id===x.id);i<0?db.customers.push(x):db.customers[i]=x;save();closeM();render()}
@@ -969,7 +980,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       '<div><label>Model</label><input id="jmodel" value="' + esc(j.model || '') + '"></div></div>' +
       '<label>Engine size / engine</label><input id="jengine" value="' + esc(j.engineSize || '') + '">' +
       '<label>Date</label><input id="jd" class="date-safe" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="' + esc(j.date || new Date().toISOString().slice(0,10)) + '">' +
-      '<label>Status</label><select id="js"><option>Open</option><option>Booked</option><option>In progress</option><option>Complete</option><option>Invoiced</option><option>Paid</option><option>Cancelled</option></select>' +
+      '<label>Status</label><select id="js"><option>Pending</option><option>Booked</option><option>In progress</option><option>Complete</option><option>Invoiced</option><option>Paid</option><option>Cancelled</option></select>' +
       '<label>Time spent on job (hours)</label><input id="jh" type="number" inputmode="decimal" min="0" step="0.25" value="' + Number(j.hours || 0) + '" placeholder="e.g. 1.5">' +
       '<div class="muted" style="margin-top:-6px;margin-bottom:10px">Labour is calculated automatically using your hourly rate in Settings.</div>' +
       '<label>Location</label><input id="jl" value="' + esc(j.location || '') + '">' +
@@ -3830,6 +3841,97 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       '<div class="actions"><button class="primary" onclick="jobForm()">＋ New Job</button><button onclick="invoiceForm()">＋ Invoice</button></div>',
       '<div class="actions"><button class="primary" onclick="jobForm()">＋ New Job</button><button class="primary" onclick="quoteForm()">＋ Quote</button><button onclick="invoiceForm()">＋ Invoice</button></div>'
     );
+  };
+
+  save();
+  render();
+})();
+</script>
+
+
+<script>
+(function(){
+  // Migrate old "Open" jobs into the clearer Pending workflow.
+  (db.jobs||[]).forEach(function(j){
+    if(!j.status || j.status==='Open') j.status='Pending';
+  });
+
+  window.jobStatusFilter = window.jobStatusFilter || 'All';
+
+  function hasInvoiceForJob(id){
+    return (db.invoices||[]).some(function(i){return i.jobId===id;});
+  }
+
+  function jobNeedsInvoice(j){
+    return j.status==='Complete' && !hasInvoiceForJob(j.id);
+  }
+
+  function statusDisplay(j){
+    return jobNeedsInvoice(j) ? 'Ready to Invoice' : (j.status||'Pending');
+  }
+
+  function statusClass(j){
+    return jobNeedsInvoice(j) ? 'status-ready' : '';
+  }
+
+  function jobCardV34(j){
+    var ps=(typeof linkedParts==='function') ? linkedParts(j) : [];
+    var lab=Number(j.hours||0)*Number((db.settings||{}).hourlyRate||0);
+    return '<div class="card '+(jobNeedsInvoice(j)?'attention-card':'')+'">'+
+      '<div class="row"><b>'+esc(j.title||'Untitled job')+'</b><span class="pill '+statusClass(j)+'">'+esc(statusDisplay(j))+'</span></div>'+
+      '<div class="muted">'+esc(j.customer||'No customer')+' • '+esc(j.reg||'No reg')+' • '+esc(j.date||'')+'</div>'+
+      (j.hours?'<div class="muted">'+esc(j.hours)+'h labour = '+money(lab)+'</div>':'')+
+      (ps.length?'<div class="muted">'+ps.length+' linked part'+(ps.length===1?'':'s')+'</div>':'')+
+      '<div class="actions"><button onclick="jobForm(\''+j.id+'\')">Open</button>'+
+      '<button class="primary" onclick="jobPartsMenu(\''+j.id+'\')">＋ Add / Select Parts</button>'+
+      (jobNeedsInvoice(j)?'<button class="primary" onclick="invoiceForm(\''+j.id+'\')">Invoice Now</button>':
+        (j.status!=='Paid'&&j.status!=='Cancelled'?'<button onclick="invoiceForm(\''+j.id+'\')">Invoice</button>':''))+
+      '</div></div>';
+  }
+
+  window.setJobFilterV34=function(filter){
+    window.jobStatusFilter=filter;
+    render();
+  };
+
+  window.jobs=function(){
+    var filters=['All','Pending','Booked','In progress','Ready to Invoice','Invoiced','Paid','Cancelled'];
+    var list=(db.jobs||[]).slice().reverse().filter(function(j){
+      if(window.jobStatusFilter==='All') return true;
+      if(window.jobStatusFilter==='Ready to Invoice') return jobNeedsInvoice(j);
+      return j.status===window.jobStatusFilter;
+    });
+
+    return '<div class="row"><div><h2 style="margin-bottom:2px">Jobs</h2><div class="muted">Track work from pending through to paid</div></div>'+
+      '<button class="primary" onclick="jobForm()">＋ New</button></div>'+
+      '<div class="job-filter-bar">'+filters.map(function(f){
+        return '<button class="'+(window.jobStatusFilter===f?'on':'')+'" onclick="setJobFilterV34(\''+f+'\')">'+f+'</button>';
+      }).join('')+'</div>'+
+      (list.map(jobCardV34).join('')||'<div class="empty">No jobs in this status.</div>');
+  };
+
+  // Dashboard makes unfinished admin obvious.
+  window.dash=function(){
+    var rev=(db.invoices||[]).reduce(function(a,x){return a+Number(x.total||0);},0);
+    var cost=(db.parts||[]).reduce(function(a,x){return a+Number(x.cost||0);},0);
+    var ready=(db.jobs||[]).filter(jobNeedsInvoice);
+    var pending=(db.jobs||[]).filter(function(j){return j.status==='Pending';});
+
+    return '<div class="grid">'+
+      '<div class="card stat">Jobs<b>'+db.jobs.length+'</b></div>'+
+      '<div class="card stat">Customers<b>'+db.customers.length+'</b></div>'+
+      '<div class="card stat">Ready to Invoice<b>'+ready.length+'</b></div>'+
+      '<div class="card stat">Pending<b>'+pending.length+'</b></div>'+
+      '<div class="card stat">Invoiced<b>'+money(rev)+'</b></div>'+
+      '<div class="card stat">Profit*<b>'+money(rev-cost)+'</b></div>'+
+      '</div>'+
+      '<div class="actions"><button class="primary" onclick="jobForm()">＋ New Job</button><button class="primary" onclick="quoteForm()">＋ Quote</button><button onclick="invoiceForm()">＋ Invoice</button></div>'+
+      (ready.length?'<div class="card attention-card"><div class="row"><b class="attention-title">Ready to Invoice</b><button onclick="setJobFilterV34(\'Ready to Invoice\');go(\'Jobs\')">View all</button></div>'+
+        ready.slice().reverse().map(jobCardV34).join('')+'</div>':'')+
+      (pending.length?'<div class="card"><div class="row"><b>Pending Jobs</b><button onclick="setJobFilterV34(\'Pending\');go(\'Jobs\')">View all</button></div>'+
+        pending.slice().reverse().slice(0,3).map(jobCardV34).join('')+'</div>':'')+
+      '<div class="card"><b>Recent jobs</b>'+(db.jobs||[]).slice().reverse().slice(0,5).map(jobCardV34).join('')+'</div>'+
+      '<p class="muted">*Invoices minus recorded parts costs.</p>';
   };
 
   save();

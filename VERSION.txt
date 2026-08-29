@@ -1,2 +1,2 @@
-Mechanic Mate v33
-Quote conversion enhancement: after converting a quote to a job, optionally copy quoted parts to unallocated stock with name, part number, supplier, quantity and customer charge prefilled. Actual cost is left at £0 for later entry. Includes all v32 features.
+Mechanic Mate v34
+Job workflow: Pending, Booked, In progress, Complete, Invoiced, Paid, Cancelled. Complete jobs without an invoice are highlighted as Ready to Invoice, with dashboard reminders and Jobs status filters. All v33 quote/stock/cloud features retained.
