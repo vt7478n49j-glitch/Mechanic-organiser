@@ -1,2 +1,2 @@
-Mechanic Mate v28
-Fix: Parts tab rendering restored after included-parts update. Included/sub-parts, stock allocation, invoices, PDF and cloud sync retained.
+Mechanic Mate v29
+Black/charcoal theme with orange highlights, based on the dark mockup. All v28 stock, included-parts, customer history, invoice/PDF and Supabase sync features retained.
