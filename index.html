@@ -4132,7 +4132,8 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     var cells=[];
     for(var i=0;i<42;i++){
       var d=new Date(gridStart.getFullYear(),gridStart.getMonth(),gridStart.getDate()+i);
-      var ds=localDateV35(d),outside=d.getMonth()!==m,jobs=byDate[ds]||[];
+      var ds=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),
+          outside=d.getMonth()!==m,jobs=byDate[ds]||[];
       var titles=jobs.map(function(j){
         return '<div class="booking-picker-job" title="'+esc(j.title||'Job')+'">'+esc(j.title||'Job')+'</div>';
       }).join('');

@@ -1,2 +1,2 @@
-Mechanic Mate v38
-UK booking dates now use DD-MM-YYYY for manual entry and display. The app continues storing the date internally as YYYY-MM-DD for reliable calendar sorting. Includes all v37 fixes.
+Mechanic Mate v39
+Calendar button fix: removed the final broken localDateV35 reference that caused the visual Booked For calendar to crash while rendering date cells. UK DD-MM-YYYY manual entry and display retained from v38.
