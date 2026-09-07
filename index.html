@@ -603,6 +603,19 @@ a{
   .booking-picker-job{font-size:8px;padding:2px 3px}
 }
 </style>
+<script>
+/* Mechanic Mate recovery build: block all Supabase network traffic. */
+(function(){
+  const originalFetch=window.fetch.bind(window);
+  window.fetch=function(input,init){
+    const url=String((input&&input.url)||input||'');
+    if(/supabase\.co/i.test(url)){
+      return Promise.reject(new Error('Supabase disabled in local recovery mode'));
+    }
+    return originalFetch(input,init);
+  };
+})();
+</script>
 </head><body>
 <div class="topbar"><div class="brandtext"><h1>🔧 Mechanic Mate</h1><div class="sub">Private mobile mechanic job manager</div></div><img id="headerLogo" class="app-logo hidden" alt="Company logo"></div><div id="nav" class="nav"></div><main id="app"></main><div id="modal"></div><div id="bookingPickerHost"></div>
 <script>
@@ -615,7 +628,7 @@ let page='Dashboard';
 function save(){
   localStorage.setItem(KEY,JSON.stringify(db));
   localStorage.setItem('mechanic-mate-local-updated-at',new Date().toISOString());
-  if(window.cloudScheduleSave) window.cloudScheduleSave();
+  /* RECOVERY MODE: cloud save disabled */
 }const money=n=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP'}).format(Number(n)||0);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const gid=()=>crypto.randomUUID();
 const jobLabel=j=>`${j.title||'Untitled'}${j.reg?' • '+j.reg:''}${j.customer?' • '+j.customer:''}`;
 function go(p){page=p;render()}function renderHeader(){const img=document.getElementById('headerLogo');if(db.settings.companyLogo){img.src=db.settings.companyLogo;img.classList.remove('hidden')}else{img.removeAttribute('src');img.classList.add('hidden')}}function render(){renderHeader();nav.innerHTML=['Dashboard','Jobs','Customers','Parts','Invoices','Settings'].map(x=>`<button class="${page===x?'on':''}" onclick="go('${x}')">${x}</button>`).join('');app.innerHTML=({Dashboard:dash,Jobs:jobs,Customers:customers,Parts:parts,Invoices:invoices,Settings:settings}[page])()}
@@ -2488,8 +2501,8 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 
 <script>
 (function(){
-  const SUPABASE_URL = 'https://ikjtezngfnophhjzjedi.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable__Tyf3b3tPIcmdC-JxvUykA_gos5pu9l';
+  const SUPABASE_URL = '';
+  const SUPABASE_KEY = '';
   const SESSION_KEY = 'mechanic-mate-supabase-session';
   const LOCAL_UPDATED_KEY = 'mechanic-mate-local-updated-at';
 
@@ -4203,4 +4216,41 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 })();
 </script>
 
+<style>
+#mmRecoveryBar{position:sticky;top:0;z-index:10001;background:#2a1a08;color:#ffb04a;
+border:1px solid #a85d00;border-radius:12px;padding:12px;margin:0 0 12px;font-weight:800}
+#mmRecoveryBar button{margin:8px 6px 0 0}
+</style>
+<script>
+(function(){
+ function snapshot(){
+   const out={exportedAt:new Date().toISOString(),location:location.href,localStorage:{}};
+   for(let i=0;i<localStorage.length;i++){
+     const k=localStorage.key(i);
+     out.localStorage[k]=localStorage.getItem(k);
+   }
+   return out;
+ }
+ window.mmExportRecovery=function(){
+   const blob=new Blob([JSON.stringify(snapshot(),null,2)],{type:'application/json'});
+   const url=URL.createObjectURL(blob),a=document.createElement('a');
+   a.href=url;a.download='mechanic-mate-local-recovery-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';
+   document.body.appendChild(a);a.click();a.remove();
+   setTimeout(()=>URL.revokeObjectURL(url),1500);
+ };
+ window.mmCopyRecovery=function(){
+   const text=JSON.stringify(snapshot(),null,2);
+   if(navigator.clipboard&&navigator.clipboard.writeText){
+     navigator.clipboard.writeText(text).then(()=>alert('Local recovery data copied.')).catch(()=>prompt('Copy this recovery data:',text));
+   }else prompt('Copy this recovery data:',text);
+ };
+ const bar=document.createElement('div');
+ bar.id='mmRecoveryBar';
+ bar.innerHTML='⚠ LOCAL RECOVERY MODE — SUPABASE SYNC BLOCKED<br>'+
+ '<span style="font-size:12px;font-weight:500;color:#ddd">This build reads the local data stored for this site and will not sync it to or from Supabase.</span><br>'+
+ '<button onclick="mmExportRecovery()">Export ALL Local Data</button>'+
+ '<button onclick="mmCopyRecovery()">Copy Raw Recovery Data</button>';
+ document.addEventListener('DOMContentLoaded',()=>document.body.insertBefore(bar,document.body.firstChild));
+})();
+</script>
 </body></html>
