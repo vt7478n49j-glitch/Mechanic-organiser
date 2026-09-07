@@ -2893,7 +2893,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '<button onclick="cloudUploadThisDevice()">Upload this device</button>' +
         '<button class="danger" onclick="cloudSignOut()">Sign out</button></div>' +
         '<div class="actions"><button onclick="cloudShowSafetyBackups()">View safety backups</button><button onclick="cloudExportSafetyBackups()">Export safety backups</button></div>' +
-        '<div class="muted">Safe Sync v41 blocks stale devices from silently replacing a different cloud revision. Up to 20 automatic snapshots are kept locally on each device.</div></div>';
+        '<div class="muted">Safe Sync v41.1 blocks stale devices from silently replacing a different cloud revision. Up to 20 automatic snapshots are kept locally on each device.</div></div>';
     }else{
       cloudHtml =
         '<div class="card cloud-card"><b>Cloud sync</b>' +
@@ -4020,7 +4020,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       '<label>Engine size / engine</label><input id="jengine" value="'+esc(j.engineSize||'')+'">'+
       '<div class="two"><div><label>Date Created</label><input id="jd" class="date-safe" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="'+esc(created)+'"></div><div><label>Booked For</label><div class="booking-date-wrap"><input id="jbooked" class="date-safe" type="text" inputmode="numeric" placeholder="DD-MM-YYYY" value="'+esc(bookingDateToUKV38(j.bookedFor||''))+'"><button type="button" aria-label="Open booking calendar" title="Open booking calendar" onclick="openBookingDatePickerV36()">📅</button></div></div></div>'+
       '<div class="muted" style="margin-top:-7px;margin-bottom:10px">Booked For is the appointment date used by the schedule/calendar. Type DD-MM-YYYY or tap 📅 to choose visually.</div>'+
-      '<label>Status</label><select id="js">'+statusOptionsV35(j.status||'Pending')+'</select>'+
+      '<label>Status</label><select id="js">'+['Pending','Booked','In progress','Complete','Invoiced','Paid','Cancelled'].map(function(s){return '<option '+(s===(j.status||'Pending')?'selected':'')+'>'+s+'</option>';}).join('')+'</select>'+
       '<div class="muted" style="margin-top:-7px;margin-bottom:10px">You can move a job backwards or forwards at any time. Ready to Invoice means the saved status is Complete and no invoice has been created yet.</div>'+
       '<label>Time spent on job (hours)</label><input id="jh" type="number" inputmode="decimal" min="0" step="0.25" value="'+Number(j.hours||0)+'" placeholder="e.g. 1.5">'+
       '<div class="muted" style="margin-top:-6px;margin-bottom:10px">Labour is calculated automatically using your hourly rate in Settings.</div>'+
@@ -4336,7 +4336,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       '<label>Customer name</label><input id="jcmanual" value="'+esc(j.customer||'')+'"><label>Registration</label><input id="jr" value="'+esc(j.reg||'')+'">'+
       '<div class="vehicle-grid"><div><label>Make</label><input id="jmake" value="'+esc(j.make||'')+'"></div><div><label>Model</label><input id="jmodel" value="'+esc(j.model||'')+'"></div></div>'+
       '<label>Engine</label><input id="jengine" value="'+esc(j.engineSize||'')+'">'+
-      '<div class="two"><div><label>Date Created</label><input id="jd" value="'+esc(created)+'"></div><div><label>Booked For</label><input id="jbooked" value="'+esc(typeof bookingDateToUKV38==='function'?bookingDateToUKV38(j.bookedFor||''):(j.bookedFor||''))+'" placeholder="DD-MM-YYYY"></div></div>'+
+      '<div class="two"><div><label>Date Created</label><input id="jd" value="'+esc(created)+'"></div><div><label>Booked For</label><input id="jbooked" value="'+esc((function(v){var m=String(v||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?m[3]+'-'+m[2]+'-'+m[1]:(v||'');})(j.bookedFor||''))+'" placeholder="DD-MM-YYYY"></div></div>'+
       '<label>Status</label><select id="js">'+statusOptionsV35(j.status||'Pending')+'</select>'+
       '<label>Time spent (hours)</label><input id="jh" type="number" step="0.25" value="'+Number(j.hours||0)+'"><label>Location</label><input id="jl" value="'+esc(j.location||'')+'">'+
       '<label>General comments / work carried out</label><textarea id="jn">'+esc(j.notes||'')+'</textarea>'+
@@ -4353,7 +4353,9 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 
   saveJob=function(id){
     var old=(db.jobs||[]).find(function(y){return y.id===id;})||{};
-    var booked=typeof bookingDateToISOV38==='function'?bookingDateToISOV38((document.getElementById('jbooked')||{}).value||''):((document.getElementById('jbooked')||{}).value||'');
+    var rawBooked=((document.getElementById('jbooked')||{}).value||'').trim(),booked=rawBooked;
+    var bm=rawBooked.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if(bm)booked=bm[3]+'-'+bm[2]+'-'+bm[1];
     var items=Array.from(document.querySelectorAll('.v41-inspection-row')).map(function(r){return {name:r.querySelector('.insp-name').value.trim(),status:r.querySelector('.insp-status').value,note:r.querySelector('.insp-note').value.trim()};}).filter(function(x){return x.name;});
     var x={...old,id:id||gid(),title:jt.value,jobType:jtype.value,customer:jcmanual.value,reg:jr.value,make:jmake.value,model:jmodel.value,engineSize:jengine.value,date:jd.value,bookedFor:booked,status:js.value,location:jl.value,notes:jn.value,hours:Number(jh.value||0),partIds:old.partIds||[],partQuantities:old.partQuantities||{},photos:old.photos||[],diagOutcome:(document.getElementById('jdiagOutcome')||{}).value||'',findings:(document.getElementById('jfindings')||{}).value||'',recommendations:(document.getElementById('jrecommend')||{}).value||'',inspectionItems:items};
     var i=db.jobs.findIndex(function(y){return y.id===x.id;});if(i<0)db.jobs.push(x);else db.jobs[i]=x;
@@ -4380,13 +4382,34 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 
   // Add payment panel to on-screen/printed invoice after existing renderer runs.
   function paymentPanelV41(i){
-    if(i.paid)return '<div class="card"><b>Payment</b><div>Paid'+(i.paymentMethod&&i.paymentMethod!=='Not yet paid'?' by '+esc(i.paymentMethod):'')+(i.paymentDate?' on '+esc(i.paymentDate):'')+'.</div></div>';
+    var base='margin-top:22px;padding-top:16px;border-top:1px solid #cfcfcf;color:#111;background:#fff;';
+    if(i.paid)return '<div class="invoice-payment-v41" style="'+base+'"><b>PAYMENT</b><div style="margin-top:6px">Paid'+(i.paymentMethod&&i.paymentMethod!=='Not yet paid'?' by '+esc(i.paymentMethod):'')+(i.paymentDate?' on '+esc(i.paymentDate):'')+'.</div></div>';
     var s=db.settings||{};
-    return '<div class="card"><b>PAYMENT DETAILS</b>'+(s.bankAccountName?'<div>Account name: '+esc(s.bankAccountName)+'</div>':'')+(s.bankSortCode?'<div>Sort code: '+esc(s.bankSortCode)+'</div>':'')+(s.bankAccountNumber?'<div>Account number: '+esc(s.bankAccountNumber)+'</div>':'')+'<div><b>Reference: '+esc(i.number||'')+'</b></div><div><b>Payment due by '+esc(v41DueDate(i))+'</b></div></div>';
+    return '<div class="invoice-payment-v41" style="'+base+'"><div style="font-weight:900;font-size:16px;margin-bottom:8px">PAYMENT DETAILS</div>'+
+      (s.bankAccountName?'<div>Account name: '+esc(s.bankAccountName)+'</div>':'')+
+      (s.bankSortCode?'<div>Sort code: '+esc(s.bankSortCode)+'</div>':'')+
+      (s.bankAccountNumber?'<div>Account number: '+esc(s.bankAccountNumber)+'</div>':'')+
+      '<div style="margin-top:8px"><b>Reference: '+esc(i.number||'')+'</b></div>'+
+      '<div><b>Payment due by '+esc(v41DueDate(i))+'</b></div></div>';
   }
   var oldView=window.viewInvoice,oldPrint=window.printShareInvoice;
-  window.viewInvoice=function(id,button){oldView(id,button);var i=db.invoices.find(function(x){return x.id===id;}),host=document.getElementById('inlineInvoicePreview');if(i&&host){var content=host.lastElementChild;if(content)content.insertAdjacentHTML('beforeend',paymentPanelV41(i));}};
-  window.printShareInvoice=function(id){var i=db.invoices.find(function(x){return x.id===id;}),host=document.getElementById('invoicePrintHost');if(!host){host=document.createElement('div');host.id='invoicePrintHost';document.body.appendChild(host);}oldPrint(id);setTimeout(function(){if(i&&host.firstElementChild)host.firstElementChild.insertAdjacentHTML('beforeend',paymentPanelV41(i));},20);};
+  window.viewInvoice=function(id,button){
+    oldView(id,button);
+    var i=db.invoices.find(function(x){return x.id===id;}),host=document.getElementById('inlineInvoicePreview');
+    if(i&&host){
+      var invoice=host.querySelector('.inline-invoice');
+      if(invoice)invoice.insertAdjacentHTML('beforeend',paymentPanelV41(i));
+    }
+  };
+  window.printShareInvoice=function(id){
+    var i=db.invoices.find(function(x){return x.id===id;}),host=document.getElementById('invoicePrintHost');
+    if(!host){host=document.createElement('div');host.id='invoicePrintHost';document.body.appendChild(host);}
+    oldPrint(id);
+    setTimeout(function(){
+      var invoice=host.querySelector('.inline-invoice');
+      if(i&&invoice)invoice.insertAdjacentHTML('beforeend',paymentPanelV41(i));
+    },20);
+  };
 
   // Quote number generator override.
   quoteNo=function(){return v41QuoteNo(new Date().toISOString().slice(0,10));};
