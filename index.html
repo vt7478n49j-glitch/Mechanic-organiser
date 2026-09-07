@@ -2893,7 +2893,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '<button onclick="cloudUploadThisDevice()">Upload this device</button>' +
         '<button class="danger" onclick="cloudSignOut()">Sign out</button></div>' +
         '<div class="actions"><button onclick="cloudShowSafetyBackups()">View safety backups</button><button onclick="cloudExportSafetyBackups()">Export safety backups</button></div>' +
-        '<div class="muted">Safe Sync v41.2 blocks stale devices from silently replacing a different cloud revision. Up to 20 automatic snapshots are kept locally on each device.</div></div>';
+        '<div class="muted">Safe Sync v41.3 blocks stale devices from silently replacing a different cloud revision. Up to 20 automatic snapshots are kept locally on each device.</div></div>';
     }else{
       cloudHtml =
         '<div class="card cloud-card"><b>Cloud sync</b>' +
@@ -4300,24 +4300,50 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     var j=db.jobs.find(function(x){return x.id===jobId;});if(!j)return;
     j.photos=(j.photos||[]).filter(function(x){return x.id!==photoId;});save();jobForm(jobId);
   };
+  window.v41PendingPhotos=window.v41PendingPhotos||{};
+  function renderPendingPhotosV413(jobId){
+    var host=document.getElementById('photoPreviewV41');if(!host)return;
+    var pending=(window.v41PendingPhotos[jobId||'new']||[]);
+    host.innerHTML=pending.map(function(ph,i){
+      return '<div class="card"><img src="'+ph.data+'" alt="Selected job photo" style="width:100%;max-height:220px;object-fit:contain;border-radius:10px"><div class="row"><b>'+esc(ph.category||'Other')+'</b><span class="muted">Ready to save</span></div>'+(ph.note?'<div>'+esc(ph.note)+'</div>':'')+'<div class="actions"><button type="button" class="danger" onclick="removePendingPhotoV413(\''+jobId+'\','+i+')">Remove</button></div></div>';
+    }).join('') || '<div class="muted">No new photos selected.</div>';
+  }
+  window.removePendingPhotoV413=function(jobId,index){
+    var arr=window.v41PendingPhotos[jobId||'new']||[];
+    arr.splice(index,1);window.v41PendingPhotos[jobId||'new']=arr;renderPendingPhotosV413(jobId);
+  };
   window.addJobPhotosV41=function(jobId,input){
-    var j=db.jobs.find(function(x){return x.id===jobId;});if(!j||!input.files.length)return;
+    if(!input.files || !input.files.length)return;
     var category=(document.getElementById('photoCategoryV41')||{}).value||'Other';
     var note=(document.getElementById('photoNoteV41')||{}).value||'';
+    var key=jobId||'new';
+    window.v41PendingPhotos[key]=window.v41PendingPhotos[key]||[];
     Array.from(input.files).slice(0,6).forEach(function(file){
       var reader=new FileReader();
       reader.onload=function(){
         var img=new Image();
         img.onload=function(){
-          var max=1100,scale=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement('canvas');
-          c.width=Math.max(1,Math.round(img.width*scale));c.height=Math.max(1,Math.round(img.height*scale));
-          c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-          j.photos=j.photos||[];
-          j.photos.push({id:gid(),category:category,note:note,addedAt:new Date().toLocaleString('en-GB'),data:c.toDataURL('image/jpeg',0.62)});
-          save();jobForm(jobId);
-        };img.src=reader.result;
-      };reader.readAsDataURL(file);
+          try{
+            var max=900,scale=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement('canvas');
+            c.width=Math.max(1,Math.round(img.width*scale));c.height=Math.max(1,Math.round(img.height*scale));
+            c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+            window.v41PendingPhotos[key].push({
+              id:(typeof gid==='function'?gid():String(Date.now())+Math.random()),
+              category:category,note:note,
+              addedAt:new Date().toLocaleString('en-GB'),
+              data:c.toDataURL('image/jpeg',0.55)
+            });
+            renderPendingPhotosV413(jobId);
+          }catch(e){
+            console.error(e);alert('Could not prepare that photo.');
+          }
+        };
+        img.onerror=function(){alert('Could not read one of the selected photos.');};
+        img.src=reader.result;
+      };
+      reader.readAsDataURL(file);
     });
+    input.value='';
   };
 
   jobForm=function(id){
@@ -4336,14 +4362,14 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       '<label>Customer name</label><input id="jcmanual" value="'+esc(j.customer||'')+'"><label>Registration</label><input id="jr" value="'+esc(j.reg||'')+'">'+
       '<div class="vehicle-grid"><div><label>Make</label><input id="jmake" value="'+esc(j.make||'')+'"></div><div><label>Model</label><input id="jmodel" value="'+esc(j.model||'')+'"></div></div>'+
       '<label>Engine</label><input id="jengine" value="'+esc(j.engineSize||'')+'">'+
-      '<div class="two"><div><label>Date Created</label><input id="jd" value="'+esc(created)+'"></div><div><label>Booked For</label><input id="jbooked" value="'+esc((function(v){var m=String(v||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?m[3]+'-'+m[2]+'-'+m[1]:(v||'');})(j.bookedFor||''))+'" placeholder="DD-MM-YYYY"></div></div>'+
+      '<div class="two"><div><label>Date Created</label><input id="jd" value="'+esc((function(v){var m=String(v||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?m[3]+'-'+m[2]+'-'+m[1]:(v||'');})(created))+'" placeholder="DD-MM-YYYY"></div><div><label>Booked For</label><input id="jbooked" value="'+esc((function(v){var m=String(v||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?m[3]+'-'+m[2]+'-'+m[1]:(v||'');})(j.bookedFor||''))+'" placeholder="DD-MM-YYYY"></div></div>'+
       '<label>Status</label><select id="js">'+['Pending','Booked','In progress','Complete','Invoiced','Paid','Cancelled'].map(function(s){return '<option value="'+s+'" '+(s===(j.status||'Pending')?'selected':'')+'>'+s+'</option>';}).join('')+'</select>'+
       '<label>Time spent (hours)</label><input id="jh" type="number" step="0.25" value="'+Number(j.hours||0)+'"><label>Location</label><input id="jl" value="'+esc(j.location||'')+'">'+
       '<label>General comments / work carried out</label><textarea id="jn">'+esc(j.notes||'')+'</textarea>'+
       '<div id="diagnosticV41" class="card" style="display:none"><b>Diagnostic outcome</b><label>Outcome</label><select id="jdiagOutcome"><option>Fault found</option><option>Further diagnostics required</option><option>No fault found at time of test</option><option>Repair / parts recommended</option></select><label>Findings / comments</label><textarea id="jfindings">'+esc(j.findings||'')+'</textarea><label>Recommended parts / further work</label><textarea id="jrecommend">'+esc(j.recommendations||'')+'</textarea></div>'+
       '<div id="inspectionV41" style="display:none"><div class="row"><b>Inspection checklist</b><button type="button" onclick="addInspectionItemV41()">＋ Add item</button></div><div id="inspectionRowsV41">'+inspection+'</div></div>'+
       linked+
-      (id?'<div class="card"><b>Job photos / evidence</b><p class="muted">Photos are compressed before saving. Use them for removed parts, completed work or faults found.</p><label>Category</label><select id="photoCategoryV41"><option>Before</option><option>Removed part</option><option>After</option><option>Fault found</option><option>Other</option></select><label>Photo note</label><input id="photoNoteV41"><input type="file" accept="image/*" multiple onchange="addJobPhotosV41(\''+id+'\',this)">'+photoCardsV41(j)+'</div>':'<div class="muted">Save the job once, then reopen it to add photos.</div>')+
+      (id?'<div class="card"><b>Job photos / evidence</b><p class="muted">Choose photos, check they appear below, then tap Save job. Photos are compressed before saving.</p><label>Category</label><select id="photoCategoryV41"><option>Before</option><option>Removed part</option><option>After</option><option>Fault found</option><option>Other</option></select><label>Photo note</label><input id="photoNoteV41"><input type="file" accept="image/*" multiple onchange="addJobPhotosV41(\''+id+'\',this)"><div style="margin-top:12px"><b>Saved photos</b>'+photoCardsV41(j)+'</div><div style="margin-top:12px"><b>New photos to save</b><div id="photoPreviewV41"><div class="muted">No new photos selected.</div></div></div></div>':'<div class="muted">Save the job once, then reopen it to add photos.</div>')+
       '<button class="primary" onclick="saveJob(\''+(id||'')+'\')">Save job</button>');
     document.getElementById('jtype').value=type;
     var diagEl=document.getElementById('jdiagOutcome');if(j.diagOutcome&&diagEl)diagEl.value=j.diagOutcome;
@@ -4358,9 +4384,18 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     if(bm)booked=bm[3]+'-'+bm[2]+'-'+bm[1];
     var items=Array.from(document.querySelectorAll('.v41-inspection-row')).map(function(r){return {name:r.querySelector('.insp-name').value.trim(),status:r.querySelector('.insp-status').value,note:r.querySelector('.insp-note').value.trim()};}).filter(function(x){return x.name;});
     function val(id){var e=document.getElementById(id);return e?e.value:'';}
-    var x={...old,id:id||gid(),title:val('jt'),jobType:val('jtype')||'Repair / Service',customer:val('jcmanual'),reg:val('jr'),make:val('jmake'),model:val('jmodel'),engineSize:val('jengine'),date:val('jd'),bookedFor:booked,status:val('js')||'Pending',location:val('jl'),notes:val('jn'),hours:Number(val('jh')||0),partIds:old.partIds||[],partQuantities:old.partQuantities||{},photos:old.photos||[],diagOutcome:val('jdiagOutcome'),findings:val('jfindings'),recommendations:val('jrecommend'),inspectionItems:items};
+    var rawCreated=val('jd').trim(),createdIso=rawCreated,cm=rawCreated.match(/^(\d{2})-(\d{2})-(\d{4})$/);if(cm)createdIso=cm[3]+'-'+cm[2]+'-'+cm[1];
+    var pending=((window.v41PendingPhotos||{})[id||'new']||[]);
+    var x={...old,id:id||gid(),title:val('jt'),jobType:val('jtype')||'Repair / Service',customer:val('jcmanual'),reg:val('jr'),make:val('jmake'),model:val('jmodel'),engineSize:val('jengine'),date:createdIso,bookedFor:booked,status:val('js')||'Pending',location:val('jl'),notes:val('jn'),hours:Number(val('jh')||0),partIds:old.partIds||[],partQuantities:old.partQuantities||{},photos:(old.photos||[]).concat(pending),diagOutcome:val('jdiagOutcome'),findings:val('jfindings'),recommendations:val('jrecommend'),inspectionItems:items};
     var i=db.jobs.findIndex(function(y){return y.id===x.id;});if(i<0)db.jobs.push(x);else db.jobs[i]=x;
-    save();closeM();render();
+    try{
+      save();
+      if(window.v41PendingPhotos){delete window.v41PendingPhotos[id||'new'];}
+      closeM();render();
+    }catch(e){
+      console.error(e);
+      alert('Could not save this job. If photos were added, try fewer photos or smaller images.');
+    }
   };
 
   // ---------- Invoice creation + payment method ----------
@@ -4410,6 +4445,34 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       var invoice=host.querySelector('.inline-invoice');
       if(i&&invoice)invoice.insertAdjacentHTML('beforeend',paymentPanelV41(i));
     },20);
+  };
+
+
+  window.toggleInvoicePaidV413=function(id){
+    var i=(db.invoices||[]).find(function(x){return x.id===id;});if(!i)return;
+    i.paid=!i.paid;
+    if(i.paid){
+      if(!i.paymentMethod || i.paymentMethod==='Not yet paid')i.paymentMethod='Other';
+      if(!i.paymentDate)i.paymentDate=new Date().toISOString().slice(0,10);
+    }else{
+      i.paymentMethod='Not yet paid';
+      i.paymentDate='';
+    }
+    if(typeof syncJobPaymentStatus==='function')syncJobPaymentStatus(i.jobId);
+    save();render();
+  };
+  invoices=function(){
+    return '<div class="row"><h2>Invoices</h2><button class="primary" onclick="invoiceForm()">＋ New</button></div>'+
+      ((db.invoices||[]).slice().reverse().map(function(i){
+        return '<div class="card"><div class="row"><b>'+esc(i.number)+'</b><b>'+money(i.total)+'</b></div>'+
+          '<div class="muted">'+esc(i.customer)+' • '+esc(i.date)+(i.jobId?' • linked job':'')+'</div>'+
+          '<p>'+(i.paid?'✅ PAID':'⚠️ UNPAID')+'</p><div class="actions">'+
+          '<button class="primary" onclick="viewInvoice(\''+i.id+'\',this)">View Invoice</button>'+
+          '<button onclick="printShareInvoice(\''+i.id+'\')">Print / Share</button>'+
+          '<button onclick="emailInvoice(\''+i.id+'\')">Email PDF</button>'+
+          '<button onclick="toggleInvoicePaidV413(\''+i.id+'\')">Mark '+(i.paid?'unpaid':'paid')+'</button>'+
+          '<button class="danger" onclick="del(\'invoices\',\''+i.id+'\')">Delete</button></div></div>';
+      }).join('')||'<div class="empty">No invoices.</div>');
   };
 
   // Quote number generator override.
