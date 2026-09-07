@@ -1,4 +1,5 @@
-Mechanic Mate v41.1 Hotfix
-- Fixes + New Job / Edit Job not opening
-- Payment details now render inside the invoice document
-- Keeps v41 feature pack functionality
+Mechanic Mate v41.2 Job Form Hotfix
+- Fixes New Job and Open/Edit Job runtime error
+- Removes dependency on private statusOptionsV35 helper
+- Makes job save fields use explicit DOM lookups for iPhone/PWA reliability
+- Retains v41.1 invoice payment placement fix and all v41 features

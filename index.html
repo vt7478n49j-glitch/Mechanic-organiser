@@ -2893,7 +2893,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '<button onclick="cloudUploadThisDevice()">Upload this device</button>' +
         '<button class="danger" onclick="cloudSignOut()">Sign out</button></div>' +
         '<div class="actions"><button onclick="cloudShowSafetyBackups()">View safety backups</button><button onclick="cloudExportSafetyBackups()">Export safety backups</button></div>' +
-        '<div class="muted">Safe Sync v41.1 blocks stale devices from silently replacing a different cloud revision. Up to 20 automatic snapshots are kept locally on each device.</div></div>';
+        '<div class="muted">Safe Sync v41.2 blocks stale devices from silently replacing a different cloud revision. Up to 20 automatic snapshots are kept locally on each device.</div></div>';
     }else{
       cloudHtml =
         '<div class="card cloud-card"><b>Cloud sync</b>' +
@@ -4337,7 +4337,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       '<div class="vehicle-grid"><div><label>Make</label><input id="jmake" value="'+esc(j.make||'')+'"></div><div><label>Model</label><input id="jmodel" value="'+esc(j.model||'')+'"></div></div>'+
       '<label>Engine</label><input id="jengine" value="'+esc(j.engineSize||'')+'">'+
       '<div class="two"><div><label>Date Created</label><input id="jd" value="'+esc(created)+'"></div><div><label>Booked For</label><input id="jbooked" value="'+esc((function(v){var m=String(v||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?m[3]+'-'+m[2]+'-'+m[1]:(v||'');})(j.bookedFor||''))+'" placeholder="DD-MM-YYYY"></div></div>'+
-      '<label>Status</label><select id="js">'+statusOptionsV35(j.status||'Pending')+'</select>'+
+      '<label>Status</label><select id="js">'+['Pending','Booked','In progress','Complete','Invoiced','Paid','Cancelled'].map(function(s){return '<option value="'+s+'" '+(s===(j.status||'Pending')?'selected':'')+'>'+s+'</option>';}).join('')+'</select>'+
       '<label>Time spent (hours)</label><input id="jh" type="number" step="0.25" value="'+Number(j.hours||0)+'"><label>Location</label><input id="jl" value="'+esc(j.location||'')+'">'+
       '<label>General comments / work carried out</label><textarea id="jn">'+esc(j.notes||'')+'</textarea>'+
       '<div id="diagnosticV41" class="card" style="display:none"><b>Diagnostic outcome</b><label>Outcome</label><select id="jdiagOutcome"><option>Fault found</option><option>Further diagnostics required</option><option>No fault found at time of test</option><option>Repair / parts recommended</option></select><label>Findings / comments</label><textarea id="jfindings">'+esc(j.findings||'')+'</textarea><label>Recommended parts / further work</label><textarea id="jrecommend">'+esc(j.recommendations||'')+'</textarea></div>'+
@@ -4346,7 +4346,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       (id?'<div class="card"><b>Job photos / evidence</b><p class="muted">Photos are compressed before saving. Use them for removed parts, completed work or faults found.</p><label>Category</label><select id="photoCategoryV41"><option>Before</option><option>Removed part</option><option>After</option><option>Fault found</option><option>Other</option></select><label>Photo note</label><input id="photoNoteV41"><input type="file" accept="image/*" multiple onchange="addJobPhotosV41(\''+id+'\',this)">'+photoCardsV41(j)+'</div>':'<div class="muted">Save the job once, then reopen it to add photos.</div>')+
       '<button class="primary" onclick="saveJob(\''+(id||'')+'\')">Save job</button>');
     document.getElementById('jtype').value=type;
-    if(j.diagOutcome&&document.getElementById('jdiagOutcome'))jdiagOutcome.value=j.diagOutcome;
+    var diagEl=document.getElementById('jdiagOutcome');if(j.diagOutcome&&diagEl)diagEl.value=j.diagOutcome;
     Array.from(document.querySelectorAll('.v41-inspection-row')).forEach(function(r,i){var x=(j.inspectionItems||[])[i];if(x)r.querySelector('.insp-status').value=x.status||'Not checked';});
     toggleJobTypeV41();
   };
@@ -4357,7 +4357,8 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     var bm=rawBooked.match(/^(\d{2})-(\d{2})-(\d{4})$/);
     if(bm)booked=bm[3]+'-'+bm[2]+'-'+bm[1];
     var items=Array.from(document.querySelectorAll('.v41-inspection-row')).map(function(r){return {name:r.querySelector('.insp-name').value.trim(),status:r.querySelector('.insp-status').value,note:r.querySelector('.insp-note').value.trim()};}).filter(function(x){return x.name;});
-    var x={...old,id:id||gid(),title:jt.value,jobType:jtype.value,customer:jcmanual.value,reg:jr.value,make:jmake.value,model:jmodel.value,engineSize:jengine.value,date:jd.value,bookedFor:booked,status:js.value,location:jl.value,notes:jn.value,hours:Number(jh.value||0),partIds:old.partIds||[],partQuantities:old.partQuantities||{},photos:old.photos||[],diagOutcome:(document.getElementById('jdiagOutcome')||{}).value||'',findings:(document.getElementById('jfindings')||{}).value||'',recommendations:(document.getElementById('jrecommend')||{}).value||'',inspectionItems:items};
+    function val(id){var e=document.getElementById(id);return e?e.value:'';}
+    var x={...old,id:id||gid(),title:val('jt'),jobType:val('jtype')||'Repair / Service',customer:val('jcmanual'),reg:val('jr'),make:val('jmake'),model:val('jmodel'),engineSize:val('jengine'),date:val('jd'),bookedFor:booked,status:val('js')||'Pending',location:val('jl'),notes:val('jn'),hours:Number(val('jh')||0),partIds:old.partIds||[],partQuantities:old.partQuantities||{},photos:old.photos||[],diagOutcome:val('jdiagOutcome'),findings:val('jfindings'),recommendations:val('jrecommend'),inspectionItems:items};
     var i=db.jobs.findIndex(function(y){return y.id===x.id;});if(i<0)db.jobs.push(x);else db.jobs[i]=x;
     save();closeM();render();
   };
