@@ -603,19 +603,6 @@ a{
   .booking-picker-job{font-size:8px;padding:2px 3px}
 }
 </style>
-<script>
-/* Mechanic Mate recovery build: block all Supabase network traffic. */
-(function(){
-  const originalFetch=window.fetch.bind(window);
-  window.fetch=function(input,init){
-    const url=String((input&&input.url)||input||'');
-    if(/supabase\.co/i.test(url)){
-      return Promise.reject(new Error('Supabase disabled in local recovery mode'));
-    }
-    return originalFetch(input,init);
-  };
-})();
-</script>
 </head><body>
 <div class="topbar"><div class="brandtext"><h1>🔧 Mechanic Mate</h1><div class="sub">Private mobile mechanic job manager</div></div><img id="headerLogo" class="app-logo hidden" alt="Company logo"></div><div id="nav" class="nav"></div><main id="app"></main><div id="modal"></div><div id="bookingPickerHost"></div>
 <script>
@@ -625,10 +612,21 @@ db.jobs=Array.isArray(db.jobs)?db.jobs:[];db.customers=Array.isArray(db.customer
 db.jobs.forEach(j=>{if(!Array.isArray(j.partIds))j.partIds=[];if(j.hours==null)j.hours=0});
 db.parts.forEach(p=>{if(p.charge==null)p.charge=Number(p.cost||0)});
 let page='Dashboard';
+function mmBackupLocal(reason){
+  try{
+    const raw=localStorage.getItem(KEY); if(!raw)return;
+    const key='mechanic-mate-backup-'+Date.now();
+    localStorage.setItem(key,JSON.stringify({createdAt:new Date().toISOString(),reason:reason||'before-save',data:JSON.parse(raw)}));
+    const keys=[];
+    for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('mechanic-mate-backup-'))keys.push(k);}
+    keys.sort(); while(keys.length>20)localStorage.removeItem(keys.shift());
+  }catch(e){console.warn('Backup failed',e);}
+}
 function save(){
+  mmBackupLocal('before-local-save');
   localStorage.setItem(KEY,JSON.stringify(db));
   localStorage.setItem('mechanic-mate-local-updated-at',new Date().toISOString());
-  /* RECOVERY MODE: cloud save disabled */
+  if(window.cloudScheduleSave) window.cloudScheduleSave();
 }const money=n=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP'}).format(Number(n)||0);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const gid=()=>crypto.randomUUID();
 const jobLabel=j=>`${j.title||'Untitled'}${j.reg?' • '+j.reg:''}${j.customer?' • '+j.customer:''}`;
 function go(p){page=p;render()}function renderHeader(){const img=document.getElementById('headerLogo');if(db.settings.companyLogo){img.src=db.settings.companyLogo;img.classList.remove('hidden')}else{img.removeAttribute('src');img.classList.add('hidden')}}function render(){renderHeader();nav.innerHTML=['Dashboard','Jobs','Customers','Parts','Invoices','Settings'].map(x=>`<button class="${page===x?'on':''}" onclick="go('${x}')">${x}</button>`).join('');app.innerHTML=({Dashboard:dash,Jobs:jobs,Customers:customers,Parts:parts,Invoices:invoices,Settings:settings}[page])()}
@@ -1523,7 +1521,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     alert('Job deleted.');
   };
 
-  save();
+  localStorage.setItem(KEY,JSON.stringify(db));
   render();
 })();
 </script>
@@ -1730,7 +1728,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     setTimeout(function(){ window.print(); setTimeout(function(){host.style.display='none';host.innerHTML='';},750); },100);
   };
 
-  save();
+  localStorage.setItem(KEY,JSON.stringify(db));
   render();
 })();
 </script>
@@ -2061,7 +2059,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     }, 500);
   };
 
-  save();
+  localStorage.setItem(KEY,JSON.stringify(db));
   render();
 })();
 </script>
@@ -2493,7 +2491,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     }, 500);
   };
 
-  save();
+  localStorage.setItem(KEY,JSON.stringify(db));
   render();
 })();
 </script>
@@ -2501,10 +2499,11 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 
 <script>
 (function(){
-  const SUPABASE_URL = '';
-  const SUPABASE_KEY = '';
+  const SUPABASE_URL = 'https://ikjtezngfnophhjzjedi.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable__Tyf3b3tPIcmdC-JxvUykA_gos5pu9l';
   const SESSION_KEY = 'mechanic-mate-supabase-session';
   const LOCAL_UPDATED_KEY = 'mechanic-mate-local-updated-at';
+  const LAST_CLOUD_KEY = 'mechanic-mate-last-cloud-updated-at';
 
   let cloudSession = null;
   let cloudSaveTimer = null;
@@ -2669,39 +2668,35 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     return rows[0] || null;
   }
 
-  async function pushCloudNow(){
+  async function pushCloudNow(forceOverwrite){
     if(!cloudSession || cloudPushBusy) return false;
-    cloudPushBusy = true;
-    updateCloudBadge();
+    cloudPushBusy=true; updateCloudBadge();
     try{
-      const s = await ensureSession();
-      if(!s) return false;
-      const uid = getUserId();
-      if(!uid) return false;
-      const now = new Date().toISOString();
+      const sess=await ensureSession(); if(!sess)return false;
+      const uid=getUserId(); if(!uid)return false;
+      const current=await cloudRow();
+      const cloudRev=current&&current.updated_at||'';
+      const baseRev=localStorage.getItem(LAST_CLOUD_KEY)||'';
+      if(current && !forceOverwrite && (!baseRev || cloudRev!==baseRev)){
+        cloudLastSync=cloudRev;
+        setCloudState('Conflict — cloud protected','Cloud changed since this device last synced. Automatic upload blocked.');
+        return false;
+      }
+      if(current&&current.data){
+        try{localStorage.setItem('mechanic-mate-backup-'+Date.now(),JSON.stringify({createdAt:new Date().toISOString(),reason:'cloud-before-upload',cloudUpdatedAt:cloudRev,data:current.data}));}catch(e){}
+      }
+      const now=new Date().toISOString();
       await supabaseRequest('/rest/v1/mechanic_mate_data?on_conflict=user_id',{
-        method:'POST',
-        headers:{
-          'Prefer':'resolution=merge-duplicates,return=minimal'
-        },
-        body:JSON.stringify({
-          user_id:uid,
-          data:db,
-          updated_at:now
-        })
+        method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+        body:JSON.stringify({user_id:uid,data:db,updated_at:now})
       });
-      cloudLastSync = now;
+      cloudLastSync=now;
+      localStorage.setItem(LAST_CLOUD_KEY,now);
       localStorage.setItem(LOCAL_UPDATED_KEY,now);
-      setCloudState('Synced','');
-      return true;
+      setCloudState('Synced',''); return true;
     }catch(e){
-      console.error('Cloud push failed',e);
-      setCloudState('Sync failed',e.message || 'Could not save to cloud');
-      return false;
-    }finally{
-      cloudPushBusy = false;
-      updateCloudBadge();
-    }
+      console.error('Cloud push failed',e); setCloudState('Sync failed',e.message||'Could not save to cloud'); return false;
+    }finally{cloudPushBusy=false;updateCloudBadge();}
   }
 
   window.cloudScheduleSave = function(){
@@ -2715,12 +2710,13 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 
   async function applyCloudData(row){
     if(!row || !row.data) return false;
-    db = normaliseDb(row.data);
+    mmBackupLocal('before-cloud-download');
+    db=normaliseDb(row.data);
     localStorage.setItem(KEY,JSON.stringify(db));
-    localStorage.setItem(LOCAL_UPDATED_KEY,row.updated_at || new Date().toISOString());
-    cloudLastSync = row.updated_at || '';
-    render();
-    return true;
+    localStorage.setItem(LOCAL_UPDATED_KEY,row.updated_at||new Date().toISOString());
+    localStorage.setItem(LAST_CLOUD_KEY,row.updated_at||'');
+    cloudLastSync=row.updated_at||'';
+    render(); return true;
   }
 
   async function pullCloudIfNewer(force){
@@ -2748,56 +2744,25 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
   }
 
   async function firstSyncAfterLogin(){
-    setCloudState('Checking cloud…','');
-    cloudPullBusy = true;
-    updateCloudBadge();
+    setCloudState('Checking cloud…',''); cloudPullBusy=true; updateCloudBadge();
     try{
-      const row = await cloudRow();
-      cloudPullBusy = false;
-      if(!row){
-        setCloudState('Uploading this device…','');
-        await pushCloudNow();
-        return;
-      }
-
-      const localTime = Date.parse(localStorage.getItem(LOCAL_UPDATED_KEY) || '') || 0;
-      const cloudTime = Date.parse(row.updated_at || '') || 0;
-
+      const row=await cloudRow(); cloudPullBusy=false;
+      if(!row){setCloudState('Uploading this device…','');await pushCloudNow(true);return;}
+      const localTime=Date.parse(localStorage.getItem(LOCAL_UPDATED_KEY)||'')||0;
+      const cloudTime=Date.parse(row.updated_at||'')||0;
+      const baseRev=localStorage.getItem(LAST_CLOUD_KEY)||'';
       if(!localHasUsefulData()){
-        await applyCloudData(row);
-        setCloudState('Downloaded cloud data','');
-      }else if(!localTime){
-        // Pre-v23 device with existing data: cloud wins only if it already clearly has useful data.
-        const cloudData = normaliseDb(row.data || {});
-        const cloudHasData = !!(
-          cloudData.jobs.length || cloudData.customers.length || cloudData.parts.length ||
-          cloudData.invoices.length || cloudData.quotes.length || cloudData.settings.companyName || cloudData.settings.companyLogo
-        );
-        if(cloudHasData){
-          const useCloud = confirm(
-            'Cloud data already exists for this account.\n\n' +
-            'OK = use the cloud copy on this device.\n' +
-            'Cancel = upload this device’s current data to the cloud.'
-          );
-          if(useCloud) await applyCloudData(row);
-          else await pushCloudNow();
-        }else{
-          await pushCloudNow();
-        }
-      }else if(cloudTime > localTime + 500){
-        await applyCloudData(row);
-      }else if(localTime > cloudTime + 500){
-        await pushCloudNow();
+        await applyCloudData(row); setCloudState('Downloaded cloud data','');
+      }else if(baseRev===row.updated_at){
+        if(cloudTime>localTime+500)await applyCloudData(row);
+        else if(localTime>cloudTime+500)await pushCloudNow(false);
+        else setCloudState('Synced','');
+      }else{
+        cloudLastSync=row.updated_at||'';
+        setCloudState('Review required','Both copies contain data. Automatic overwrite is blocked on this device.');
       }
-
-      cloudLastSync = row.updated_at || cloudLastSync;
-      setCloudState('Synced','');
-    }catch(e){
-      cloudPullBusy = false;
-      setCloudState('Sync failed',e.message || 'Could not complete first sync');
-    }finally{
-      updateCloudBadge();
-    }
+    }catch(e){cloudPullBusy=false;setCloudState('Sync failed',e.message||'Could not complete first sync');}
+    finally{updateCloudBadge();}
   }
 
   window.cloudSignIn = async function(){
@@ -2884,6 +2849,20 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     render();
   };
 
+  window.cloudShowSafetyBackups=function(){
+    const a=[];
+    for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('mechanic-mate-backup-')){try{a.push(JSON.parse(localStorage.getItem(k)))}catch(e){}}}
+    a.sort((x,y)=>String(y.createdAt||'').localeCompare(String(x.createdAt||'')));
+    if(!a.length){alert('No automatic safety backups yet.');return;}
+    alert('Automatic safety backups on this device:\n\n'+a.slice(0,20).map((x,i)=>(i+1)+'. '+(x.createdAt||'')+' — '+(x.reason||'backup')+' — '+((x.data&&x.data.jobs)||[]).length+' jobs').join('\n'));
+  };
+  window.cloudExportSafetyBackups=function(){
+    const a=[];
+    for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('mechanic-mate-backup-')){try{a.push({key:k,value:JSON.parse(localStorage.getItem(k))})}catch(e){}}}
+    const blob=new Blob([JSON.stringify({exportedAt:new Date().toISOString(),current:db,backups:a},null,2)],{type:'application/json'});
+    const x=document.createElement('a');x.href=URL.createObjectURL(blob);x.download='mechanic-mate-safety-backups.json';document.body.appendChild(x);x.click();x.remove();setTimeout(()=>URL.revokeObjectURL(x.href),1000);
+  };
+
   const previousSettings = settings;
   settings = function(){
     let cloudHtml = '';
@@ -2898,7 +2877,9 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '<div class="actions"><button class="primary" onclick="cloudSyncNow()">Sync now</button>' +
         '<button onclick="cloudDownloadToDevice()">Download cloud copy</button>' +
         '<button onclick="cloudUploadThisDevice()">Upload this device</button>' +
-        '<button class="danger" onclick="cloudSignOut()">Sign out</button></div></div>';
+        '<button class="danger" onclick="cloudSignOut()">Sign out</button></div>' +
+        '<div class="actions"><button onclick="cloudShowSafetyBackups()">View safety backups</button><button onclick="cloudExportSafetyBackups()">Export safety backups</button></div>' +
+        '<div class="muted">Safe Sync v40 blocks stale devices from silently replacing a different cloud revision. Up to 20 automatic snapshots are kept locally on each device.</div></div>';
     }else{
       cloudHtml =
         '<div class="card cloud-card"><b>Cloud sync</b>' +
@@ -3188,7 +3169,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       (history || '<div class="empty">No previous jobs for this customer.</div>'));
   };
 
-  save();
+  localStorage.setItem(KEY,JSON.stringify(db));
   render();
 })();
 </script>
@@ -3475,7 +3456,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     setTimeout(function(){window.print();setTimeout(function(){host.style.display='none';host.innerHTML='';},750);},100);
   };
 
-  save();
+  localStorage.setItem(KEY,JSON.stringify(db));
   render();
 })();
 </script>
@@ -3884,7 +3865,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     );
   };
 
-  save();
+  localStorage.setItem(KEY,JSON.stringify(db));
   render();
 })();
 </script>
@@ -3975,7 +3956,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       '<p class="muted">*Invoices minus recorded parts costs.</p>';
   };
 
-  save();
+  localStorage.setItem(KEY,JSON.stringify(db));
   render();
 })();
 </script>
@@ -4216,41 +4197,4 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 })();
 </script>
 
-<style>
-#mmRecoveryBar{position:sticky;top:0;z-index:10001;background:#2a1a08;color:#ffb04a;
-border:1px solid #a85d00;border-radius:12px;padding:12px;margin:0 0 12px;font-weight:800}
-#mmRecoveryBar button{margin:8px 6px 0 0}
-</style>
-<script>
-(function(){
- function snapshot(){
-   const out={exportedAt:new Date().toISOString(),location:location.href,localStorage:{}};
-   for(let i=0;i<localStorage.length;i++){
-     const k=localStorage.key(i);
-     out.localStorage[k]=localStorage.getItem(k);
-   }
-   return out;
- }
- window.mmExportRecovery=function(){
-   const blob=new Blob([JSON.stringify(snapshot(),null,2)],{type:'application/json'});
-   const url=URL.createObjectURL(blob),a=document.createElement('a');
-   a.href=url;a.download='mechanic-mate-local-recovery-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';
-   document.body.appendChild(a);a.click();a.remove();
-   setTimeout(()=>URL.revokeObjectURL(url),1500);
- };
- window.mmCopyRecovery=function(){
-   const text=JSON.stringify(snapshot(),null,2);
-   if(navigator.clipboard&&navigator.clipboard.writeText){
-     navigator.clipboard.writeText(text).then(()=>alert('Local recovery data copied.')).catch(()=>prompt('Copy this recovery data:',text));
-   }else prompt('Copy this recovery data:',text);
- };
- const bar=document.createElement('div');
- bar.id='mmRecoveryBar';
- bar.innerHTML='⚠ LOCAL RECOVERY MODE — SUPABASE SYNC BLOCKED<br>'+
- '<span style="font-size:12px;font-weight:500;color:#ddd">This build reads the local data stored for this site and will not sync it to or from Supabase.</span><br>'+
- '<button onclick="mmExportRecovery()">Export ALL Local Data</button>'+
- '<button onclick="mmCopyRecovery()">Copy Raw Recovery Data</button>';
- document.addEventListener('DOMContentLoaded',()=>document.body.insertBefore(bar,document.body.firstChild));
-})();
-</script>
 </body></html>

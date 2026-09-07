@@ -1,5 +1,2 @@
-Mechanic Mate LOCAL RECOVERY BUILD 1
-Based on uploaded Mechanic Mate v39.
-Supabase cloud sync is deliberately blocked.
-The normal localStorage key mechanic-mate-v2 is preserved so this build can inspect the phone's existing local data when served from the SAME website origin.
-Use Export ALL Local Data immediately after opening.
+Mechanic Mate v40 Safe Sync
+Stale-device overwrite protection and rolling local backups.
