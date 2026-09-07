@@ -1,7 +1,8 @@
-Mechanic Mate v41.3 Fixes
-- Restores reliable Mark paid / Mark unpaid control on invoices
-- Job photos now show as pending previews before Save Job
-- Photos no longer auto-save or reopen the job form while being selected
-- Save Job merges pending photos and closes normally
-- Date Created now displays DD-MM-YYYY like Booked For, while remaining ISO internally
-- Retains invoice payment details inside the invoice and all v41 features
+Mechanic Mate v41.4 Verifiable Sync
+- Adds content fingerprints for device and cloud data
+- Upload re-downloads the cloud row and verifies actual content before reporting Synced
+- Downloads verify the applied cloud data
+- Adds Verify sync button
+- Shows This device / Cloud fingerprint values
+- Reports Sync mismatch instead of false Synced when data differs
+- Retains all v41.3 fixes and features
