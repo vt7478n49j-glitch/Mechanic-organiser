@@ -1,2 +1,10 @@
-Mechanic Mate v40 Safe Sync
-Stale-device overwrite protection and rolling local backups.
+Mechanic Mate v41 Feature Pack
+- Automatic newer-cloud download while preserving stale-upload protection
+- Date-based invoice and quote numbers: INV-DDMMYY-01 / QUO-DDMMYY-01
+- One-time migration of existing trial invoices and quotes
+- Bank/payment settings, payment terms, due date and invoice reference
+- Payment method/date tracking
+- Job types: Repair/Service, Diagnostics, Pre-purchase inspection, Health check, Other
+- Diagnostic findings and recommendations
+- Inspection checklist with custom items
+- Job evidence photos with category, note and timestamp
