@@ -3278,6 +3278,34 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
   window.photoStorageUrlV432=photoUrlV43;
 
 
+  window.refreshPhotoStoragePanelV436=async function(){
+    var el=document.getElementById('photoStorageSummaryV436');
+    if(!el)return;
+    if(!cloudSession){
+      el.innerHTML='<span class="muted">Sign in to Cloud Sync to view photo storage.</span>';
+      return;
+    }
+    el.innerHTML='<span class="muted">Checking photo storage…</span>';
+    try{
+      var uid=cloudSession.user&&cloudSession.user.id;
+      if(!uid)throw new Error('Signed-in user ID is unavailable.');
+      var info=await window.photoStorageUsageV435(uid);
+      var total=Number(info&&info.bytes||0),count=Number(info&&info.count||0);
+      var allowance=1024*1024*1024;
+      var mb=total/1024/1024;
+      var pct=Math.min(100,(total/allowance)*100);
+      var remaining=Math.max(0,(allowance-total)/1024/1024);
+      var usedText=(mb<1?mb.toFixed(2):mb.toFixed(1))+' MB';
+      el.innerHTML=
+        '<div class="row wrap"><div><b>'+count+' photo'+(count===1?'':'s')+'</b><div class="muted">'+usedText+' stored in Supabase</div></div><span class="pill">'+pct.toFixed(1)+'% of 1 GB</span></div>'+ 
+        '<div style="height:8px;border-radius:999px;background:#0f1216;border:1px solid var(--line);overflow:hidden;margin:10px 0 8px"><div style="height:100%;width:'+pct.toFixed(2)+'%;min-width:'+(total>0?'2px':'0')+';background:var(--accent)"></div></div>'+ 
+        '<div class="muted">Approx '+remaining.toFixed(0)+' MB remaining on the 1 GB reference allowance.</div>';
+    }catch(e){
+      console.error('Photo storage summary failed',e);
+      el.innerHTML='<span class="muted">Could not read photo storage right now. Use Refresh to try again.</span>';
+    }
+  };
+
   window.showPhotoCloudUsageV433=async function(){
     if(!cloudSession){alert('Sign in to Cloud Sync first.');return;}
     try{
@@ -3425,7 +3453,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '<button class="danger" onclick="cloudSignOut()">Sign out</button></div>' +
         '<div class="actions"><button onclick="cloudShowSafetyBackups()">View safety backups</button><button onclick="cloudExportSafetyBackups()">Export safety backups</button></div>' +
         '<div class="muted">Safe Sync v43.5 automatically reconciles verified device/cloud changes and keeps manual controls as a fallback. Lightweight safety snapshots exclude photo image bytes.</div>'+
-        '<div class="card" style="margin-top:14px"><b>Job photo storage</b><p class="muted">Photos can be stored privately in Supabase Storage instead of inside the main app database.</p><div class="actions"><button onclick="testPhotoStorageV43()">Test photo storage</button><button onclick="migrateExistingPhotosV43()">Migrate existing photos</button><button onclick="showPhotoCloudUsageV433()">Photo cloud usage</button><button onclick="showStorageUsageV431()">Device storage usage</button></div><div class="muted">Run the supplied <b>setup-supabase-photo-storage.sql</b> once in Supabase before using cloud photo storage.</div></div></div>';
+        '<div class="card" style="margin-top:14px"><div class="row wrap"><b>Job photo storage</b><span class="pill">Supabase Storage</span></div><p class="muted">Job photos are stored privately in Supabase Storage so the main job database stays lightweight and photos remain available on your signed-in devices.</p><div id="photoStorageSummaryV436" class="cloud-status"><span class="muted">Checking photo storage…</span></div><div class="actions"><button onclick="refreshPhotoStoragePanelV436()">Refresh storage</button><button onclick="showStorageUsageV431()">Device storage usage</button></div></div></div>';
     }else{
       cloudHtml =
         '<div class="card cloud-card"><b>Cloud sync</b>' +
@@ -3437,6 +3465,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '<div class="cloud-status"><span class="muted">' + esc(cloudStatus) +
         (cloudError ? '<br>' + esc(cloudError) : '') + '</span></div></div>';
     }
+    if(cloudSession)setTimeout(function(){ if(window.refreshPhotoStoragePanelV436) window.refreshPhotoStoragePanelV436(); },0);
     return cloudHtml + previousSettings();
   };
 
