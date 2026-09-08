@@ -2559,6 +2559,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 
   let cloudSession = null;
   let cloudSaveTimer = null;
+  let manualCloudOperationV416=false;
   let cloudPushBusy = false;
   let cloudPullBusy = false;
   let cloudStatus = 'Not signed in';
@@ -2792,6 +2793,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
   }
 
   async function pullCloudIfNewer(force){
+    if(manualCloudOperationV416 && !force)return false;
     if(!cloudSession || cloudPullBusy || cloudPushBusy || cloudSaveTimer) return false;
     cloudPullBusy = true;
     updateCloudBadge();
@@ -2903,28 +2905,61 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
   
   window.cloudForceUploadV415 = async function(){
     if(!cloudSession){alert('Sign in first.');return;}
-    if(!confirm('Replace the cloud copy with THIS DEVICE? A local safety backup of the current cloud copy will be kept first.'))return;
+    if(manualCloudOperationV416){alert('A cloud operation is already running.');return;}
+    if(!confirm('Replace the cloud copy with THIS DEVICE? The current cloud data will be backed up locally first.'))return;
+
+    manualCloudOperationV416=true;
+    if(cloudSaveTimer){clearTimeout(cloudSaveTimer);cloudSaveTimer=null;}
     try{
-      setCloudState('Uploading chosen device…',summaryTextV415('Device',db));
+      var chosen=normaliseDb(JSON.parse(JSON.stringify(db)));
+      var chosenFp=dataFingerprintV415(chosen);
+      setCloudState('Uploading chosen device…',summaryTextV415('Device',chosen));
+
       var before=await cloudRow();
       if(before) mmBackupObject('cloud-before-forced-upload',before.data||{});
-      var res=await sbFetch('/rest/v1/mechanic_mate_data?on_conflict=user_id',{
-        method:'POST',
-        headers:{'Prefer':'resolution=merge-duplicates,return=representation'},
-        body:JSON.stringify({user_id:cloudSession.user.id,data:db,updated_at:new Date().toISOString()})
+
+      // Update the authenticated user's exact row. If it does not yet exist, create it.
+      var stamp=new Date().toISOString();
+      var res=await sbFetch('/rest/v1/mechanic_mate_data?user_id=eq.'+encodeURIComponent(cloudSession.user.id),{
+        method:'PATCH',
+        headers:{'Prefer':'return=representation'},
+        body:JSON.stringify({data:chosen,updated_at:stamp})
       });
-      if(!res.ok)throw new Error(await res.text());
+      if(!res.ok)throw new Error('Cloud update failed: '+await res.text());
+
+      var changed=[];
+      try{changed=await res.json();}catch(_){}
+      if(!Array.isArray(changed)||changed.length===0){
+        var create=await sbFetch('/rest/v1/mechanic_mate_data',{
+          method:'POST',
+          headers:{'Prefer':'return=representation'},
+          body:JSON.stringify({user_id:cloudSession.user.id,data:chosen,updated_at:stamp})
+        });
+        if(!create.ok)throw new Error('Cloud create failed: '+await create.text());
+      }
+
+      // Re-fetch independently and compare the exact content.
       var after=await cloudRow();
-      var lf=dataFingerprintV415(db),cf=cloudFingerprintV414(after);
-      if(lf!==cf)throw new Error('Forced upload did not verify. Device '+lf+' / Cloud '+cf);
-      if(after&&after.updated_at){
+      if(!after)throw new Error('Upload returned no cloud row.');
+      var cloudFp=cloudFingerprintV414(after);
+      if(chosenFp!==cloudFp){
+        setCloudState('UPLOAD MISMATCH',summaryTextV415('Device',chosen)+'\n'+summaryTextV415('Cloud',after.data||{}));
+        return;
+      }
+
+      // Only now update local sync baseline and report success.
+      if(after.updated_at){
         localStorage.setItem(LAST_CLOUD_KEY,after.updated_at);
         localStorage.setItem(LOCAL_UPDATED_KEY,after.updated_at);
         cloudLastSync=after.updated_at;
       }
-      setCloudState('Synced',syncProofTextV414(after));
+      setCloudState('Verified upload','Device and cloud match.\n'+syncProofTextV414(after));
     }catch(e){
-      console.error(e);setCloudState('Upload failed',e.message||'Could not upload this device.');
+      console.error(e);
+      setCloudState('UPLOAD FAILED',String(e&&e.message||e||'Unknown upload error'));
+    }finally{
+      // Delay release slightly so focus/visibility handlers cannot immediately overwrite result.
+      setTimeout(function(){manualCloudOperationV416=false;},1500);
     }
   };
 
@@ -3000,7 +3035,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '<button onclick="cloudForceUploadV415()">Upload this device</button>' +
         '<button class="danger" onclick="cloudSignOut()">Sign out</button></div>' +
         '<div class="actions"><button onclick="cloudShowSafetyBackups()">View safety backups</button><button onclick="cloudExportSafetyBackups()">Export safety backups</button></div>' +
-        '<div class="muted">Safe Sync v41.5 blocks stale devices from silently replacing a different cloud revision. Up to 20 automatic snapshots are kept locally on each device.</div></div>';
+        '<div class="muted">Safe Sync v41.6 locks automatic sync during manual transfers and only confirms a manual upload after Supabase is re-fetched and verified. Up to 20 automatic snapshots are kept locally on each device.</div></div>';
     }else{
       cloudHtml =
         '<div class="card cloud-card"><b>Cloud sync</b>' +

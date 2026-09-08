@@ -1,7 +1,9 @@
-Mechanic Mate v41.5 Sync Diagnostics
-- Fixes unreachable post-download verification in v41.4
-- Uses a longer 64-bit-style content fingerprint
-- Shows job count, latest job and logo fingerprint for device/cloud
-- Download re-reads localStorage and verifies persisted content
-- Upload This Device uses a dedicated forced-upload path then re-fetches and verifies cloud
-- Synced is only shown after content comparison
+Mechanic Mate v41.6 Manual Sync Fix
+- Locks automatic cloud activity while Upload This Device is running
+- Clears pending autosave before a manual forced upload
+- Uses direct PATCH against the signed-in user's Supabase row
+- Creates the row if it does not exist
+- Re-fetches Supabase after upload and compares exact data fingerprint
+- Reports Verified upload only when device and cloud genuinely match
+- Reports explicit UPLOAD FAILED / UPLOAD MISMATCH otherwise
+- Retains v41.5 diagnostics and all v41.3 app features
