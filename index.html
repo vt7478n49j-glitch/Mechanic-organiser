@@ -631,7 +631,7 @@ let page='Dashboard';
       }catch(_){}
     });
     // Keep a smaller rolling set while photos are in use.
-    while(keys.length>8){
+    while(keys.length>4){
       localStorage.removeItem(keys.shift());
     }
   }catch(e){ console.warn('Backup cleanup skipped',e); }
@@ -665,6 +665,10 @@ function mmBackupSnapshotV42(obj){
       });
     }
   });
+  if(copy.settings && typeof copy.settings.companyLogo==='string' && copy.settings.companyLogo.length>500){
+    delete copy.settings.companyLogo;
+    copy.settings.backupLogoOmitted=true;
+  }
   return copy;
 }
 function mmBackupObject(reason,obj){
@@ -3225,8 +3229,15 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       total+=bytes;
       if(k.indexOf('mechanic-mate-backup-')===0){backup+=bytes;count++;}
     }
-    alert('Approx local storage used: '+(total/1024/1024).toFixed(2)+' MB\\nSafety backups: '+count+' ('+(backup/1024/1024).toFixed(2)+' MB)');
+    alert('Approx local storage used: '+(total/1024/1024).toFixed(2)+' MB\nSafety backups: '+count+' ('+(backup/1024/1024).toFixed(2)+' MB)');
   };
+
+
+  // v43.2 public bridge for the later job UI script.
+  window.photoStorageSignedInV432=function(){ return !!cloudSession; };
+  window.photoStorageUploadV432=uploadPhotoDataV43;
+  window.photoStorageDeleteV432=deleteStoredPhotoV43;
+  window.photoStorageUrlV432=photoUrlV43;
 
   window.testPhotoStorageV43=async function(){
     if(!cloudSession){alert('Sign in to Cloud Sync first.');return;}
@@ -3347,7 +3358,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '<button onclick="cloudForceUploadV415()">Upload this device</button>' +
         '<button class="danger" onclick="cloudSignOut()">Sign out</button></div>' +
         '<div class="actions"><button onclick="cloudShowSafetyBackups()">View safety backups</button><button onclick="cloudExportSafetyBackups()">Export safety backups</button></div>' +
-        '<div class="muted">Safe Sync v43.1 automatically reconciles verified device/cloud changes and keeps manual controls as a fallback. Lightweight safety snapshots exclude photo image bytes.</div>'+
+        '<div class="muted">Safe Sync v43.2 automatically reconciles verified device/cloud changes and keeps manual controls as a fallback. Lightweight safety snapshots exclude photo image bytes.</div>'+
         '<div class="card" style="margin-top:14px"><b>Job photo storage</b><p class="muted">Photos can be stored privately in Supabase Storage instead of inside the main app database.</p><div class="actions"><button onclick="testPhotoStorageV43()">Test photo storage</button><button onclick="migrateExistingPhotosV43()">Migrate existing photos</button><button onclick="showStorageUsageV431()">Storage usage</button></div><div class="muted">Run the supplied <b>setup-supabase-photo-storage.sql</b> once in Supabase before using cloud photo storage.</div></div></div>';
     }else{
       cloudHtml =
@@ -4760,7 +4771,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
   window.removeJobPhotoV41=async function(jobId,photoId){
     var j=db.jobs.find(function(x){return x.id===jobId;});if(!j)return;
     var ph=(j.photos||[]).find(function(x){return x.id===photoId;});
-    if(ph&&ph.storagePath)await deleteStoredPhotoV43(ph);
+    if(ph&&ph.storagePath&&window.photoStorageDeleteV432)await window.photoStorageDeleteV432(ph);
     j.photos=(j.photos||[]).filter(function(x){return x.id!==photoId;});
     save();jobForm(jobId);
   };
@@ -4853,8 +4864,8 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     var jobId=id||gid(),prepared=[];
     for(var pp=0;pp<pending.length;pp++){
       try{
-        if(cloudSession){
-          prepared.push(await uploadPhotoDataV43(jobId,pending[pp]));
+        if(window.photoStorageSignedInV432 && window.photoStorageSignedInV432()){
+          prepared.push(await window.photoStorageUploadV432(jobId,pending[pp]));
         }else{
           throw new Error('Cloud Sync is not signed in. Sign in before saving job photos.');
         }
@@ -4875,7 +4886,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 
     }catch(e){
       console.error(e);
-      alert('Could not save this job. If photos were added, try fewer photos or smaller images.');
+      alert('Could not save this job: '+(e&&e.message?e.message:e));
     }
   };
 
