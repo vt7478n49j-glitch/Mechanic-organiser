@@ -1,9 +1,6 @@
-Mechanic Mate v41.6 Manual Sync Fix
-- Locks automatic cloud activity while Upload This Device is running
-- Clears pending autosave before a manual forced upload
-- Uses direct PATCH against the signed-in user's Supabase row
-- Creates the row if it does not exist
-- Re-fetches Supabase after upload and compares exact data fingerprint
-- Reports Verified upload only when device and cloud genuinely match
-- Reports explicit UPLOAD FAILED / UPLOAD MISMATCH otherwise
-- Retains v41.5 diagnostics and all v41.3 app features
+Mechanic Mate v41.7 Upload Fix
+- Fixes v41.6 'Can't find variable: mmBackupObject'
+- Adds cloud-copy safety snapshot helper
+- Safety backup/quota failure can no longer abort Upload This Device
+- Retains direct Supabase PATCH + re-fetch verification from v41.6
+- Retains v41.5 sync diagnostics and all app features

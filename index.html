@@ -622,6 +622,32 @@ function mmBackupLocal(reason){
     keys.sort(); while(keys.length>20)localStorage.removeItem(keys.shift());
   }catch(e){console.warn('Backup failed',e);}
 }
+
+function mmBackupObject(reason,obj){
+  try{
+    var key='mechanic-mate-backup-'+Date.now();
+    localStorage.setItem(key,JSON.stringify({
+      createdAt:new Date().toISOString(),
+      reason:reason||'cloud-snapshot',
+      data:normaliseDb(obj||{})
+    }));
+    var keys=[];
+    for(var i=0;i<localStorage.length;i++){
+      var k=localStorage.key(i);
+      if(k&&k.indexOf('mechanic-mate-backup-')===0)keys.push(k);
+    }
+    keys.sort();
+    while(keys.length>20){
+      localStorage.removeItem(keys.shift());
+    }
+    return true;
+  }catch(e){
+    // A backup failure (e.g. photo/localStorage quota) must not abort a cloud upload.
+    console.warn('Safety backup skipped:',e);
+    return false;
+  }
+}
+
 function save(){
   mmBackupLocal('before-local-save');
   localStorage.setItem(KEY,JSON.stringify(db));
@@ -2916,7 +2942,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       setCloudState('Uploading chosen device…',summaryTextV415('Device',chosen));
 
       var before=await cloudRow();
-      if(before) mmBackupObject('cloud-before-forced-upload',before.data||{});
+      if(before){try{mmBackupObject('cloud-before-forced-upload',before.data||{});}catch(_){}}
 
       // Update the authenticated user's exact row. If it does not yet exist, create it.
       var stamp=new Date().toISOString();
@@ -3035,7 +3061,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '<button onclick="cloudForceUploadV415()">Upload this device</button>' +
         '<button class="danger" onclick="cloudSignOut()">Sign out</button></div>' +
         '<div class="actions"><button onclick="cloudShowSafetyBackups()">View safety backups</button><button onclick="cloudExportSafetyBackups()">Export safety backups</button></div>' +
-        '<div class="muted">Safe Sync v41.6 locks automatic sync during manual transfers and only confirms a manual upload after Supabase is re-fetched and verified. Up to 20 automatic snapshots are kept locally on each device.</div></div>';
+        '<div class="muted">Safe Sync v41.7 locks automatic sync during manual transfers and only confirms a manual upload after Supabase is re-fetched and verified. Up to 20 automatic snapshots are kept locally on each device.</div></div>';
     }else{
       cloudHtml =
         '<div class="card cloud-card"><b>Cloud sync</b>' +
