@@ -1,6 +1,6 @@
-Mechanic Mate v41.7 Upload Fix
-- Fixes v41.6 'Can't find variable: mmBackupObject'
-- Adds cloud-copy safety snapshot helper
-- Safety backup/quota failure can no longer abort Upload This Device
-- Retains direct Supabase PATCH + re-fetch verification from v41.6
-- Retains v41.5 sync diagnostics and all app features
+Mechanic Mate v41.8 Upload API Fix
+- Fixes v41.7 'Can't find variable: sbFetch'
+- Forced upload now uses the app's existing authenticated supabaseRequest() helper
+- Directly PATCHes the signed-in user's row, creates it if absent
+- Re-fetches the cloud row and verifies actual content before success
+- Retains manual-operation lock, diagnostics and all existing app features
