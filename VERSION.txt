@@ -1,5 +1,5 @@
-Mechanic Mate v43.4 Photo Meter Fix
-- Fixes Photo cloud usage error: Can't find variable PHOTO_BUCKET
-- Photo meter now addresses the mechanic-mate-photos bucket directly
-- Fixes line breaks in the photo cloud usage/error popups
-- No changes to working photo uploads, automatic sync, job data, or Storage policies
+Mechanic Mate v43.5 Photo Meter API Fix
+- Fixes Photo cloud usage 'Load failed'
+- Usage meter now runs through the same authenticated Supabase Storage helper used by successful photo uploads
+- Keeps Storage bucket/session variables inside their correct script scope
+- No changes to working photo uploads, job sync, or cloud data

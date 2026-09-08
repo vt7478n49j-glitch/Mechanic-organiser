@@ -3234,59 +3234,57 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 
 
   // v43.2 public bridge for the later job UI script.
+  window.photoStorageUsageV435=async function(uid){
+    async function list(prefix){
+      var all=[],offset=0,limit=100;
+      while(true){
+        var rows=await storageRequestV43('/object/list/'+encodeURIComponent(PHOTO_BUCKET),{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({prefix:prefix,limit:limit,offset:offset,sortBy:{column:'name',order:'asc'}})
+        });
+        rows=Array.isArray(rows)?rows:[];
+        all=all.concat(rows);
+        if(rows.length<limit)break;
+        offset+=limit;
+      }
+      return all;
+    }
+    var top=await list(uid);
+    var bytes=0,count=0;
+    for(var i=0;i<top.length;i++){
+      var item=top[i];
+      if(item.metadata){
+        count++;
+        bytes+=Number(item.metadata.size||0)||0;
+      }else{
+        var children=await list(uid+'/'+item.name);
+        for(var j=0;j<children.length;j++){
+          if(children[j].metadata){
+            count++;
+            bytes+=Number(children[j].metadata.size||0)||0;
+          }
+        }
+      }
+    }
+    return {count:count,bytes:bytes};
+  };
+
   window.photoStorageSignedInV432=function(){ return !!cloudSession; };
   window.photoStorageUploadV432=uploadPhotoDataV43;
   window.photoStorageDeleteV432=deleteStoredPhotoV43;
   window.photoStorageUrlV432=photoUrlV43;
 
 
-  async function listAllPhotoObjectsV433(prefix){
-    var all=[],offset=0,limit=100;
-    while(true){
-      var body={prefix:prefix||'',limit:limit,offset:offset,sortBy:{column:'name',order:'asc'}};
-      var r=await storageRequestV43('/object/list/'+encodeURIComponent('mechanic-mate-photos'),{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(body)
-      });
-      var rows=Array.isArray(r)?r:[];
-      all=all.concat(rows);
-      if(rows.length<limit)break;
-      offset+=limit;
-      if(offset>100000)break;
-    }
-    return all;
-  }
-
   window.showPhotoCloudUsageV433=async function(){
     if(!cloudSession){alert('Sign in to Cloud Sync first.');return;}
     try{
       var uid=cloudSession.user&&cloudSession.user.id;
       if(!uid)throw new Error('Signed-in user ID is unavailable.');
-      // Storage list at the user's private top-level folder. Job folders are returned here.
-      var folders=await listAllPhotoObjectsV433(uid);
-      var total=0,count=0,jobFolders=0;
-      for(var i=0;i<folders.length;i++){
-        var f=folders[i];
-        // Folder entries normally have no metadata; list each job folder.
-        if(!f.metadata){
-          jobFolders++;
-          var photos=await listAllPhotoObjectsV433(uid+'/'+f.name);
-          for(var j=0;j<photos.length;j++){
-            var ph=photos[j];
-            if(ph.metadata){
-              count++;
-              var sz=Number(ph.metadata.size||ph.metadata.contentLength||0);
-              if(isFinite(sz))total+=sz;
-            }
-          }
-        }else{
-          count++;
-          var sz0=Number(f.metadata.size||f.metadata.contentLength||0);
-          if(isFinite(sz0))total+=sz0;
-        }
-      }
-      var mb=total/1024/1024,gb=total/1024/1024/1024;
+      if(!window.photoStorageUsageV435)throw new Error('Photo Storage helper is not ready. Reload the app and try again.');
+      var info=await window.photoStorageUsageV435(uid);
+      var total=info.bytes||0,count=info.count||0;
+      var mb=total/1024/1024;
       var freeBytes=1024*1024*1024;
       var pct=Math.min(100,(total/freeBytes)*100);
       var remaining=Math.max(0,(freeBytes-total)/1024/1024);
@@ -3297,7 +3295,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         'Approx free-tier allowance: 1 GB\n'+
         'Approx remaining: '+remaining.toFixed(0)+' MB\n'+
         'Used: '+pct.toFixed(1)+'%\n\n'+
-        'This meter counts Mechanic Mate photos in your private user folder. The 1 GB figure is the Supabase Free-plan project/organisation allowance, so other Storage files would also count toward Supabase billing limits.'
+        'This counts Mechanic Mate job photos stored under your private user folder.'
       );
     }catch(e){
       console.error('Photo cloud usage failed',e);
@@ -3424,7 +3422,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '<button onclick="cloudForceUploadV415()">Upload this device</button>' +
         '<button class="danger" onclick="cloudSignOut()">Sign out</button></div>' +
         '<div class="actions"><button onclick="cloudShowSafetyBackups()">View safety backups</button><button onclick="cloudExportSafetyBackups()">Export safety backups</button></div>' +
-        '<div class="muted">Safe Sync v43.4 automatically reconciles verified device/cloud changes and keeps manual controls as a fallback. Lightweight safety snapshots exclude photo image bytes.</div>'+
+        '<div class="muted">Safe Sync v43.5 automatically reconciles verified device/cloud changes and keeps manual controls as a fallback. Lightweight safety snapshots exclude photo image bytes.</div>'+
         '<div class="card" style="margin-top:14px"><b>Job photo storage</b><p class="muted">Photos can be stored privately in Supabase Storage instead of inside the main app database.</p><div class="actions"><button onclick="testPhotoStorageV43()">Test photo storage</button><button onclick="migrateExistingPhotosV43()">Migrate existing photos</button><button onclick="showPhotoCloudUsageV433()">Photo cloud usage</button><button onclick="showStorageUsageV431()">Device storage usage</button></div><div class="muted">Run the supplied <b>setup-supabase-photo-storage.sql</b> once in Supabase before using cloud photo storage.</div></div></div>';
     }else{
       cloudHtml =
