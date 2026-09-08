@@ -3239,11 +3239,12 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     async function list(prefix){
       var all=[],offset=0,limit=100;
       while(true){
-        var rows=await storageRequestV43('/storage/v1/object/list/'+encodeURIComponent(PHOTO_BUCKET),{
+        var res=await storageRequestV43('/storage/v1/object/list/'+encodeURIComponent(PHOTO_BUCKET),{
           method:'POST',
           headers:{'Content-Type':'application/json'},
           body:JSON.stringify({prefix:prefix,limit:limit,offset:offset,sortBy:{column:'name',order:'asc'}})
         });
+        var rows=await res.json();
         rows=Array.isArray(rows)?rows:[];
         all=all.concat(rows);
         if(rows.length<limit)break;
