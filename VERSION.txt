@@ -1,9 +1,10 @@
-Mechanic Mate v42 Auto Sync / Photo Quota Prep
-- Keeps v41.8 as the verified manual-sync foundation
-- Automatically checks cloud when app gains focus, becomes visible, and every 30 seconds while open
-- Automatically downloads a newer cloud revision only when the local device has no unsynced changes
-- Automatically pushes local changes only when cloud is still at the device's known baseline
-- True divergence remains blocked as Sync issue rather than overwriting either copy
-- Safety backups no longer duplicate large embedded photo image data
-- Photo metadata remains in backups; image bytes are omitted to reduce localStorage quota pressure
-- Supabase Storage migration is intentionally not activated until a Storage bucket/policies exist
+Mechanic Mate v43
+- Fixes persistent top-right Sync issue badge when status is actually Synced
+- Keeps verified automatic two-device sync from v42
+- Adds private Supabase Storage support for job photos
+- New job photos upload to Storage when configured
+- Existing embedded photos continue to display
+- Adds Test photo storage and Migrate existing photos controls
+- Deletes Storage object when a stored job photo is removed
+- Falls back to local embedded photo data if Storage is not configured, with a warning
+- Safety backups remain lightweight and omit image bytes

@@ -2734,12 +2734,15 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     if(!cloudSession){
       badge.className='cloud-badge off';
       badge.textContent='☁️ Local only';
-    }else if(cloudError){
-      badge.className='cloud-badge warn';
-      badge.textContent='☁️ Sync issue';
-    }else if(cloudPushBusy || cloudPullBusy){
+    }else if(cloudPushBusy || cloudPullBusy || /^Uploading|^Downloading|^Verifying|^Checking/i.test(cloudStatus||'')){
       badge.className='cloud-badge warn';
       badge.textContent='☁️ Syncing…';
+    }else if(/^(Synced|Verified upload)$/i.test(cloudStatus||'')){
+      badge.className='cloud-badge ok';
+      badge.textContent='☁️ Synced';
+    }else if(/failed|mismatch|issue|conflict|required/i.test((cloudStatus||'')+' '+(cloudError||''))){
+      badge.className='cloud-badge warn';
+      badge.textContent='☁️ Sync issue';
     }else{
       badge.className='cloud-badge ok';
       badge.textContent='☁️ Synced';
@@ -3066,6 +3069,162 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     if(document.visibilityState==='visible')autoReconcileV42();
   },30000);
 
+
+  const PHOTO_BUCKET_V43='mechanic-mate-photos';
+  const photoObjectUrlsV43=new Map();
+
+  function photoStoragePathV43(jobId,photoId){
+    var uid=getUserId();
+    if(!uid)throw new Error('Sign in to Cloud Sync before uploading job photos.');
+    return uid+'/'+String(jobId)+'/'+String(photoId)+'.jpg';
+  }
+
+  function dataUrlToBlobV43(dataUrl){
+    var parts=String(dataUrl||'').split(',');
+    if(parts.length<2)throw new Error('Invalid photo data.');
+    var mime=((parts[0].match(/data:([^;]+)/)||[])[1]||'image/jpeg');
+    var bin=atob(parts[1]),arr=new Uint8Array(bin.length);
+    for(var i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+    return new Blob([arr],{type:mime});
+  }
+
+  async function storageRequestV43(path,opts){
+    opts=opts||{};
+    var s=await ensureSession();
+    if(!s||!s.access_token)throw new Error('Not signed in');
+    var headers=Object.assign({
+      'apikey':SUPABASE_KEY,
+      'Authorization':'Bearer '+s.access_token
+    },opts.headers||{});
+    var res=await fetch(SUPABASE_URL+path,Object.assign({},opts,{headers:headers}));
+    if(!res.ok){
+      var msg='';
+      try{
+        var ct=res.headers.get('content-type')||'';
+        if(ct.indexOf('application/json')>=0){
+          var j=await res.json();msg=j.message||j.error||j.msg||JSON.stringify(j);
+        }else msg=await res.text();
+      }catch(_){}
+      throw new Error(msg||('Storage request failed ('+res.status+')'));
+    }
+    return res;
+  }
+
+  async function uploadPhotoDataV43(jobId,photo){
+    if(!photo || !photo.data)return photo;
+    var path=photoStoragePathV43(jobId,photo.id);
+    var blob=dataUrlToBlobV43(photo.data);
+    await storageRequestV43(
+      '/storage/v1/object/'+PHOTO_BUCKET_V43+'/'+path.split('/').map(encodeURIComponent).join('/'),
+      {
+        method:'POST',
+        headers:{
+          'Content-Type':blob.type||'image/jpeg',
+          'x-upsert':'true',
+          'cache-control':'3600'
+        },
+        body:blob
+      }
+    );
+    var clean=Object.assign({},photo);
+    delete clean.data;
+    clean.storagePath=path;
+    clean.storageBucket=PHOTO_BUCKET_V43;
+    clean.storageVersion=1;
+    return clean;
+  }
+
+  async function deleteStoredPhotoV43(photo){
+    if(!photo || !photo.storagePath)return;
+    try{
+      await storageRequestV43('/storage/v1/object/'+PHOTO_BUCKET_V43,{
+        method:'DELETE',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({prefixes:[photo.storagePath]})
+      });
+    }catch(e){
+      console.warn('Could not delete stored photo',e);
+    }
+  }
+
+  async function photoUrlV43(photo){
+    if(!photo)return '';
+    if(photo.data)return photo.data;
+    if(!photo.storagePath)return '';
+    var key=photo.storagePath;
+    if(photoObjectUrlsV43.has(key))return photoObjectUrlsV43.get(key);
+    var res=await storageRequestV43(
+      '/storage/v1/object/authenticated/'+PHOTO_BUCKET_V43+'/'+key.split('/').map(encodeURIComponent).join('/'),
+      {method:'GET'}
+    );
+    var blob=await res.blob();
+    var url=URL.createObjectURL(blob);
+    photoObjectUrlsV43.set(key,url);
+    return url;
+  }
+
+  window.hydrateStoredPhotosV43=async function(){
+    var imgs=Array.from(document.querySelectorAll('img[data-storage-photo]'));
+    for(var i=0;i<imgs.length;i++){
+      var img=imgs[i],path=img.getAttribute('data-storage-photo');
+      if(!path||img.getAttribute('data-loaded')==='1')continue;
+      try{
+        var u=await photoUrlV43({storagePath:path});
+        if(u){img.src=u;img.setAttribute('data-loaded','1');}
+      }catch(e){
+        img.alt='Photo unavailable';
+        console.warn('Photo load failed',e);
+      }
+    }
+  };
+
+  window.testPhotoStorageV43=async function(){
+    if(!cloudSession){alert('Sign in to Cloud Sync first.');return;}
+    var uid=getUserId(),path=uid+'/_test/storage-test.txt';
+    try{
+      var blob=new Blob(['Mechanic Mate storage test'],{type:'text/plain'});
+      await storageRequestV43('/storage/v1/object/'+PHOTO_BUCKET_V43+'/'+path.split('/').map(encodeURIComponent).join('/'),{
+        method:'POST',headers:{'Content-Type':'text/plain','x-upsert':'true'},body:blob
+      });
+      await storageRequestV43('/storage/v1/object/'+PHOTO_BUCKET_V43,{
+        method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({prefixes:[path]})
+      });
+      alert('Photo storage is connected and working.');
+    }catch(e){
+      alert('Photo storage is not ready yet:\\n\\n'+(e.message||e)+'\\n\\nRun the supplied Supabase SQL setup file first.');
+    }
+  };
+
+  window.migrateExistingPhotosV43=async function(){
+    if(!cloudSession){alert('Sign in to Cloud Sync first.');return;}
+    var work=[];
+    (db.jobs||[]).forEach(function(j){
+      (j.photos||[]).forEach(function(ph){
+        if(ph.data&&!ph.storagePath)work.push({job:j,photo:ph});
+      });
+    });
+    if(!work.length){alert('There are no embedded job photos to migrate.');return;}
+    if(!confirm('Move '+work.length+' existing job photo(s) to Supabase Storage? The app data will be saved after each successful upload.'))return;
+
+    var done=0,failed=0;
+    for(var i=0;i<work.length;i++){
+      var item=work[i];
+      try{
+        var uploaded=await uploadPhotoDataV43(item.job.id,item.photo);
+        var pi=item.job.photos.findIndex(function(x){return x.id===item.photo.id;});
+        if(pi>=0)item.job.photos[pi]=uploaded;
+        localStorage.setItem(KEY,JSON.stringify(db));
+        done++;
+      }catch(e){
+        failed++;
+        console.error('Photo migration failed',e);
+      }
+    }
+    try{save();}catch(_){}
+    alert('Photo migration finished. Moved: '+done+(failed?' • Failed: '+failed:''));
+    render();
+  };
+
   window.cloudVerifyV414 = async function(){
     if(!cloudSession){ alert('Sign in to Cloud Sync first.'); return; }
     setCloudState('Verifying…','Comparing actual content.');
@@ -3138,7 +3297,8 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '<button onclick="cloudForceUploadV415()">Upload this device</button>' +
         '<button class="danger" onclick="cloudSignOut()">Sign out</button></div>' +
         '<div class="actions"><button onclick="cloudShowSafetyBackups()">View safety backups</button><button onclick="cloudExportSafetyBackups()">Export safety backups</button></div>' +
-        '<div class="muted">Safe Sync v42 locks automatic sync during manual transfers and only confirms a manual upload after Supabase is re-fetched and verified. Up to 20 lightweight automatic snapshots are kept locally on each device. Photo image bytes are excluded from safety snapshots to prevent browser quota errors.</div></div>';
+        '<div class="muted">Safe Sync v43 automatically reconciles verified device/cloud changes and keeps manual controls as a fallback. Lightweight safety snapshots exclude photo image bytes.</div>'+
+        '<div class="card" style="margin-top:14px"><b>Job photo storage</b><p class="muted">Photos can be stored privately in Supabase Storage instead of inside the main app database.</p><div class="actions"><button onclick="testPhotoStorageV43()">Test photo storage</button><button onclick="migrateExistingPhotosV43()">Migrate existing photos</button></div><div class="muted">Run the supplied <b>setup-supabase-photo-storage.sql</b> once in Supabase before using cloud photo storage.</div></div></div>';
     }else{
       cloudHtml =
         '<div class="card cloud-card"><b>Cloud sync</b>' +
@@ -4537,13 +4697,22 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     if(i)i.style.display=(t==='Pre-purchase inspection'||t==='Health check')?'block':'none';
   };
   function photoCardsV41(j){
-    return (j.photos||[]).map(function(ph){
-      return '<div class="card"><img src="'+ph.data+'" alt="Job evidence" style="width:100%;max-height:260px;object-fit:contain;border-radius:10px"><div class="row"><b>'+esc(ph.category||'Other')+'</b><span class="muted">'+esc(ph.addedAt||'')+'</span></div>'+(ph.note?'<div>'+esc(ph.note)+'</div>':'')+'<div class="actions"><button class="danger" type="button" onclick="removeJobPhotoV41(\''+j.id+'\',\''+ph.id+'\')">Remove</button></div></div>';
-    }).join('')||'<div class="muted">No job photos yet.</div>';
+    var html=(j.photos||[]).map(function(ph){
+      var src=ph.data||'';
+      var img=ph.storagePath
+        ? '<img data-storage-photo="'+esc(ph.storagePath)+'" src="'+src+'" alt="Job evidence" style="width:100%;max-height:260px;object-fit:contain;border-radius:10px;background:#111">'
+        : '<img src="'+src+'" alt="Job evidence" style="width:100%;max-height:260px;object-fit:contain;border-radius:10px">';
+      return '<div class="card">'+img+'<div class="row"><b>'+esc(ph.category||'Other')+'</b><span class="muted">'+esc(ph.addedAt||'')+'</span></div>'+(ph.note?'<div>'+esc(ph.note)+'</div>':'')+'<div class="actions"><button class="danger" type="button" onclick="removeJobPhotoV41(\''+j.id+'\',\''+ph.id+'\')">Remove</button></div></div>';
+    }).join('');
+    setTimeout(function(){if(window.hydrateStoredPhotosV43)window.hydrateStoredPhotosV43();},0);
+    return html||'<div class="muted">No job photos yet.</div>';
   }
-  window.removeJobPhotoV41=function(jobId,photoId){
+  window.removeJobPhotoV41=async function(jobId,photoId){
     var j=db.jobs.find(function(x){return x.id===jobId;});if(!j)return;
-    j.photos=(j.photos||[]).filter(function(x){return x.id!==photoId;});save();jobForm(jobId);
+    var ph=(j.photos||[]).find(function(x){return x.id===photoId;});
+    if(ph&&ph.storagePath)await deleteStoredPhotoV43(ph);
+    j.photos=(j.photos||[]).filter(function(x){return x.id!==photoId;});
+    save();jobForm(jobId);
   };
   window.v41PendingPhotos=window.v41PendingPhotos||{};
   function renderPendingPhotosV413(jobId){
@@ -4622,7 +4791,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     toggleJobTypeV41();
   };
 
-  saveJob=function(id){
+  saveJob=async function(id){
     var old=(db.jobs||[]).find(function(y){return y.id===id;})||{};
     var rawBooked=((document.getElementById('jbooked')||{}).value||'').trim(),booked=rawBooked;
     var bm=rawBooked.match(/^(\d{2})-(\d{2})-(\d{4})$/);
@@ -4631,12 +4800,23 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     function val(id){var e=document.getElementById(id);return e?e.value:'';}
     var rawCreated=val('jd').trim(),createdIso=rawCreated,cm=rawCreated.match(/^(\d{2})-(\d{2})-(\d{4})$/);if(cm)createdIso=cm[3]+'-'+cm[2]+'-'+cm[1];
     var pending=((window.v41PendingPhotos||{})[id||'new']||[]);
-    var x={...old,id:id||gid(),title:val('jt'),jobType:val('jtype')||'Repair / Service',customer:val('jcmanual'),reg:val('jr'),make:val('jmake'),model:val('jmodel'),engineSize:val('jengine'),date:createdIso,bookedFor:booked,status:val('js')||'Pending',location:val('jl'),notes:val('jn'),hours:Number(val('jh')||0),partIds:old.partIds||[],partQuantities:old.partQuantities||{},photos:(old.photos||[]).concat(pending),diagOutcome:val('jdiagOutcome'),findings:val('jfindings'),recommendations:val('jrecommend'),inspectionItems:items};
+    var jobId=id||gid(),prepared=[],photoFallback=false;
+    for(var pp=0;pp<pending.length;pp++){
+      try{
+        if(cloudSession)prepared.push(await uploadPhotoDataV43(jobId,pending[pp]));
+        else{prepared.push(pending[pp]);photoFallback=true;}
+      }catch(e){
+        console.warn('Storage upload unavailable; keeping photo locally.',e);
+        prepared.push(pending[pp]);photoFallback=true;
+      }
+    }
+    var x={...old,id:jobId,title:val('jt'),jobType:val('jtype')||'Repair / Service',customer:val('jcmanual'),reg:val('jr'),make:val('jmake'),model:val('jmodel'),engineSize:val('jengine'),date:createdIso,bookedFor:booked,status:val('js')||'Pending',location:val('jl'),notes:val('jn'),hours:Number(val('jh')||0),partIds:old.partIds||[],partQuantities:old.partQuantities||{},photos:(old.photos||[]).concat(prepared),diagOutcome:val('jdiagOutcome'),findings:val('jfindings'),recommendations:val('jrecommend'),inspectionItems:items};
     var i=db.jobs.findIndex(function(y){return y.id===x.id;});if(i<0)db.jobs.push(x);else db.jobs[i]=x;
     try{
       save();
       if(window.v41PendingPhotos){delete window.v41PendingPhotos[id||'new'];}
       closeM();render();
+      if(photoFallback)alert('Job saved. One or more photos were kept on this device because Supabase Photo Storage is not ready. Run the supplied storage setup, then use “Migrate existing photos” in Settings.');
     }catch(e){
       console.error(e);
       alert('Could not save this job. If photos were added, try fewer photos or smaller images.');
