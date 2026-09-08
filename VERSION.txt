@@ -1,8 +1,5 @@
-Mechanic Mate v43.3 Photo Storage Meter
-- Adds Settings > Photo cloud usage
-- Counts stored Mechanic Mate job photos in the signed-in user's private Supabase Storage folder
-- Totals photo bytes and shows MB used
-- Shows approximate usage against the 1 GB Supabase Free-plan storage allowance
-- Shows approximate remaining MB and percentage used
-- Renames the existing browser meter to Device storage usage for clarity
-- Retains v43.2 verified automatic sync and private Supabase photo storage
+Mechanic Mate v43.4 Photo Meter Fix
+- Fixes Photo cloud usage error: Can't find variable PHOTO_BUCKET
+- Photo meter now addresses the mechanic-mate-photos bucket directly
+- Fixes line breaks in the photo cloud usage/error popups
+- No changes to working photo uploads, automatic sync, job data, or Storage policies
