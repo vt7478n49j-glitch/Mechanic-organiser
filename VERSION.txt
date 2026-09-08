@@ -1,8 +1,8 @@
-Mechanic Mate v43.2 Photo Scope Fix
-- Fixes 'Can't find variable: cloudSession' when saving job photos
-- Exposes photo-storage upload/delete/sign-in helpers safely across app script scopes
-- Existing and new job photos can now use the configured Supabase Storage bucket
-- Safety backups now omit both photo image bytes and the large company-logo image
-- Startup cleanup keeps 4 lightweight safety backups
-- Storage usage popup now uses proper line breaks
-- Retains verified automatic sync and v43 private photo storage
+Mechanic Mate v43.3 Photo Storage Meter
+- Adds Settings > Photo cloud usage
+- Counts stored Mechanic Mate job photos in the signed-in user's private Supabase Storage folder
+- Totals photo bytes and shows MB used
+- Shows approximate usage against the 1 GB Supabase Free-plan storage allowance
+- Shows approximate remaining MB and percentage used
+- Renames the existing browser meter to Device storage usage for clarity
+- Retains v43.2 verified automatic sync and private Supabase photo storage
