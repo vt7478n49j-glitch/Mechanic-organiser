@@ -1,6 +1,9 @@
-Mechanic Mate v41.8 Upload API Fix
-- Fixes v41.7 'Can't find variable: sbFetch'
-- Forced upload now uses the app's existing authenticated supabaseRequest() helper
-- Directly PATCHes the signed-in user's row, creates it if absent
-- Re-fetches the cloud row and verifies actual content before success
-- Retains manual-operation lock, diagnostics and all existing app features
+Mechanic Mate v42 Auto Sync / Photo Quota Prep
+- Keeps v41.8 as the verified manual-sync foundation
+- Automatically checks cloud when app gains focus, becomes visible, and every 30 seconds while open
+- Automatically downloads a newer cloud revision only when the local device has no unsynced changes
+- Automatically pushes local changes only when cloud is still at the device's known baseline
+- True divergence remains blocked as Sync issue rather than overwriting either copy
+- Safety backups no longer duplicate large embedded photo image data
+- Photo metadata remains in backups; image bytes are omitted to reduce localStorage quota pressure
+- Supabase Storage migration is intentionally not activated until a Storage bucket/policies exist

@@ -623,13 +623,32 @@ function mmBackupLocal(reason){
   }catch(e){console.warn('Backup failed',e);}
 }
 
+
+function mmBackupSnapshotV42(obj){
+  var copy;
+  try{ copy=JSON.parse(JSON.stringify(obj||{})); }catch(_){ return {}; }
+  // Photos can be very large base64 strings. Backups retain their metadata but not image bytes.
+  (copy.jobs||[]).forEach(function(j){
+    if(Array.isArray(j.photos)){
+      j.photos=j.photos.map(function(ph){
+        var x=Object.assign({},ph);
+        ['data','dataUrl','src','base64','imageData'].forEach(function(k){
+          if(typeof x[k]==='string' && x[k].length>500) delete x[k];
+        });
+        x.backupImageOmitted=true;
+        return x;
+      });
+    }
+  });
+  return copy;
+}
 function mmBackupObject(reason,obj){
   try{
     var key='mechanic-mate-backup-'+Date.now();
     localStorage.setItem(key,JSON.stringify({
       createdAt:new Date().toISOString(),
       reason:reason||'cloud-snapshot',
-      data:normaliseDb(obj||{})
+      data:mmBackupSnapshotV42(normaliseDb(obj||{}))
     }));
     var keys=[];
     for(var i=0;i<localStorage.length;i++){
@@ -2988,9 +3007,64 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       console.error(e);
       setCloudState('UPLOAD FAILED',String(e&&e.message||e||'Unknown upload error'));
     }finally{
-      setTimeout(function(){manualCloudOperationV416=false;},1500);
+      setTimeout(function(){manualCloudOperationV416=false; autoReconcileV42();},1500);
     }
   };
+
+
+  async function autoReconcileV42(){
+    if(!cloudSession || manualCloudOperationV416 || document.visibilityState==='hidden')return;
+    try{
+      var row=await cloudRow();
+      if(!row)return;
+      var localFp=dataFingerprintV415(db), cloudFp=cloudFingerprintV414(row);
+      if(localFp===cloudFp){
+        if(row.updated_at){
+          localStorage.setItem(LAST_CLOUD_KEY,row.updated_at);
+          cloudLastSync=row.updated_at;
+        }
+        setCloudState('Synced',syncProofTextV414(row));
+        return;
+      }
+
+      var base=localStorage.getItem(LAST_CLOUD_KEY)||'';
+      var localUpdated=localStorage.getItem(LOCAL_UPDATED_KEY)||'';
+      var cloudUpdated=row.updated_at||'';
+
+      // Safe automatic download: this device has not changed since its last known cloud revision,
+      // but cloud has advanced on another device.
+      if(base && cloudUpdated && base!==cloudUpdated && (!localUpdated || localUpdated<=base)){
+        manualCloudOperationV416=true;
+        try{
+          await applyCloudData(row);
+          setCloudState('Synced',syncProofTextV414(row));
+        }finally{
+          manualCloudOperationV416=false;
+        }
+        return;
+      }
+
+      // If this device has local changes, normal save logic gets first chance to push.
+      // If cloud also changed, leave both untouched and surface a real conflict.
+      if(base && cloudUpdated===base && localUpdated && localUpdated>base){
+        await pushCloudNow(false);
+        return;
+      }
+
+      setCloudState('Sync issue',
+        'Device and cloud differ. Automatic overwrite blocked.\n'+syncProofTextV414(row));
+    }catch(e){
+      console.warn('Auto reconcile:',e);
+    }
+  }
+
+  window.addEventListener('focus',function(){setTimeout(autoReconcileV42,250);});
+  document.addEventListener('visibilitychange',function(){
+    if(document.visibilityState==='visible')setTimeout(autoReconcileV42,250);
+  });
+  setInterval(function(){
+    if(document.visibilityState==='visible')autoReconcileV42();
+  },30000);
 
   window.cloudVerifyV414 = async function(){
     if(!cloudSession){ alert('Sign in to Cloud Sync first.'); return; }
@@ -3064,7 +3138,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '<button onclick="cloudForceUploadV415()">Upload this device</button>' +
         '<button class="danger" onclick="cloudSignOut()">Sign out</button></div>' +
         '<div class="actions"><button onclick="cloudShowSafetyBackups()">View safety backups</button><button onclick="cloudExportSafetyBackups()">Export safety backups</button></div>' +
-        '<div class="muted">Safe Sync v41.8 locks automatic sync during manual transfers and only confirms a manual upload after Supabase is re-fetched and verified. Up to 20 automatic snapshots are kept locally on each device.</div></div>';
+        '<div class="muted">Safe Sync v42 locks automatic sync during manual transfers and only confirms a manual upload after Supabase is re-fetched and verified. Up to 20 lightweight automatic snapshots are kept locally on each device. Photo image bytes are excluded from safety snapshots to prevent browser quota errors.</div></div>';
     }else{
       cloudHtml =
         '<div class="card cloud-card"><b>Cloud sync</b>' +
