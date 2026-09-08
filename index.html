@@ -612,6 +612,31 @@ db.jobs=Array.isArray(db.jobs)?db.jobs:[];db.customers=Array.isArray(db.customer
 db.jobs.forEach(j=>{if(!Array.isArray(j.partIds))j.partIds=[];if(j.hours==null)j.hours=0});
 db.parts.forEach(p=>{if(p.charge==null)p.charge=Number(p.cost||0)});
 let page='Dashboard';
+
+(function cleanOldPhotoBackupsV431(){
+  try{
+    var keys=[];
+    for(var i=0;i<localStorage.length;i++){
+      var k=localStorage.key(i);
+      if(k&&k.indexOf('mechanic-mate-backup-')===0)keys.push(k);
+    }
+    keys.sort();
+    keys.forEach(function(k){
+      try{
+        var snap=JSON.parse(localStorage.getItem(k)||'null');
+        if(snap&&snap.data){
+          snap.data=mmBackupSnapshotV42(snap.data);
+          localStorage.setItem(k,JSON.stringify(snap));
+        }
+      }catch(_){}
+    });
+    // Keep a smaller rolling set while photos are in use.
+    while(keys.length>8){
+      localStorage.removeItem(keys.shift());
+    }
+  }catch(e){ console.warn('Backup cleanup skipped',e); }
+})();
+
 function mmBackupLocal(reason){
   try{
     const raw=localStorage.getItem(KEY); if(!raw)return;
@@ -668,8 +693,22 @@ function mmBackupObject(reason,obj){
 }
 
 function save(){
-  mmBackupLocal('before-local-save');
-  localStorage.setItem(KEY,JSON.stringify(db));
+  try{ mmBackupLocal('before-local-save'); }catch(_){}
+  try{
+    localStorage.setItem(KEY,JSON.stringify(db));
+  }catch(e){
+    // Legacy photo-heavy backups may have filled localStorage.
+    try{
+      var keys=[];
+      for(var i=0;i<localStorage.length;i++){
+        var k=localStorage.key(i);
+        if(k&&k.indexOf('mechanic-mate-backup-')===0)keys.push(k);
+      }
+      keys.sort();
+      while(keys.length>3)localStorage.removeItem(keys.shift());
+      localStorage.setItem(KEY,JSON.stringify(db));
+    }catch(e2){ throw e2; }
+  }
   localStorage.setItem('mechanic-mate-local-updated-at',new Date().toISOString());
   if(window.cloudScheduleSave) window.cloudScheduleSave();
 }const money=n=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP'}).format(Number(n)||0);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const gid=()=>crypto.randomUUID();
@@ -3178,6 +3217,17 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     }
   };
 
+  window.showStorageUsageV431=function(){
+    var total=0,backup=0,count=0;
+    for(var i=0;i<localStorage.length;i++){
+      var k=localStorage.key(i),v=localStorage.getItem(k)||'';
+      var bytes=(k.length+v.length)*2;
+      total+=bytes;
+      if(k.indexOf('mechanic-mate-backup-')===0){backup+=bytes;count++;}
+    }
+    alert('Approx local storage used: '+(total/1024/1024).toFixed(2)+' MB\\nSafety backups: '+count+' ('+(backup/1024/1024).toFixed(2)+' MB)');
+  };
+
   window.testPhotoStorageV43=async function(){
     if(!cloudSession){alert('Sign in to Cloud Sync first.');return;}
     var uid=getUserId(),path=uid+'/_test/storage-test.txt';
@@ -3297,8 +3347,8 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '<button onclick="cloudForceUploadV415()">Upload this device</button>' +
         '<button class="danger" onclick="cloudSignOut()">Sign out</button></div>' +
         '<div class="actions"><button onclick="cloudShowSafetyBackups()">View safety backups</button><button onclick="cloudExportSafetyBackups()">Export safety backups</button></div>' +
-        '<div class="muted">Safe Sync v43 automatically reconciles verified device/cloud changes and keeps manual controls as a fallback. Lightweight safety snapshots exclude photo image bytes.</div>'+
-        '<div class="card" style="margin-top:14px"><b>Job photo storage</b><p class="muted">Photos can be stored privately in Supabase Storage instead of inside the main app database.</p><div class="actions"><button onclick="testPhotoStorageV43()">Test photo storage</button><button onclick="migrateExistingPhotosV43()">Migrate existing photos</button></div><div class="muted">Run the supplied <b>setup-supabase-photo-storage.sql</b> once in Supabase before using cloud photo storage.</div></div></div>';
+        '<div class="muted">Safe Sync v43.1 automatically reconciles verified device/cloud changes and keeps manual controls as a fallback. Lightweight safety snapshots exclude photo image bytes.</div>'+
+        '<div class="card" style="margin-top:14px"><b>Job photo storage</b><p class="muted">Photos can be stored privately in Supabase Storage instead of inside the main app database.</p><div class="actions"><button onclick="testPhotoStorageV43()">Test photo storage</button><button onclick="migrateExistingPhotosV43()">Migrate existing photos</button><button onclick="showStorageUsageV431()">Storage usage</button></div><div class="muted">Run the supplied <b>setup-supabase-photo-storage.sql</b> once in Supabase before using cloud photo storage.</div></div></div>';
     }else{
       cloudHtml =
         '<div class="card cloud-card"><b>Cloud sync</b>' +
@@ -4800,14 +4850,20 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     function val(id){var e=document.getElementById(id);return e?e.value:'';}
     var rawCreated=val('jd').trim(),createdIso=rawCreated,cm=rawCreated.match(/^(\d{2})-(\d{2})-(\d{4})$/);if(cm)createdIso=cm[3]+'-'+cm[2]+'-'+cm[1];
     var pending=((window.v41PendingPhotos||{})[id||'new']||[]);
-    var jobId=id||gid(),prepared=[],photoFallback=false;
+    var jobId=id||gid(),prepared=[];
     for(var pp=0;pp<pending.length;pp++){
       try{
-        if(cloudSession)prepared.push(await uploadPhotoDataV43(jobId,pending[pp]));
-        else{prepared.push(pending[pp]);photoFallback=true;}
+        if(cloudSession){
+          prepared.push(await uploadPhotoDataV43(jobId,pending[pp]));
+        }else{
+          throw new Error('Cloud Sync is not signed in. Sign in before saving job photos.');
+        }
       }catch(e){
-        console.warn('Storage upload unavailable; keeping photo locally.',e);
-        prepared.push(pending[pp]);photoFallback=true;
+        console.error('Photo Storage upload failed',e);
+        alert('The job has NOT been saved yet because a photo could not be uploaded to Supabase Storage.\n\n'+
+              (e&&e.message?e.message:e)+
+              '\n\nYour selected photos are still shown in this window. Fix/test Photo Storage, then tap Save job again.');
+        return;
       }
     }
     var x={...old,id:jobId,title:val('jt'),jobType:val('jtype')||'Repair / Service',customer:val('jcmanual'),reg:val('jr'),make:val('jmake'),model:val('jmodel'),engineSize:val('jengine'),date:createdIso,bookedFor:booked,status:val('js')||'Pending',location:val('jl'),notes:val('jn'),hours:Number(val('jh')||0),partIds:old.partIds||[],partQuantities:old.partQuantities||{},photos:(old.photos||[]).concat(prepared),diagOutcome:val('jdiagOutcome'),findings:val('jfindings'),recommendations:val('jrecommend'),inspectionItems:items};
@@ -4816,7 +4872,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       save();
       if(window.v41PendingPhotos){delete window.v41PendingPhotos[id||'new'];}
       closeM();render();
-      if(photoFallback)alert('Job saved. One or more photos were kept on this device because Supabase Photo Storage is not ready. Run the supplied storage setup, then use “Migrate existing photos” in Settings.');
+
     }catch(e){
       console.error(e);
       alert('Could not save this job. If photos were added, try fewer photos or smaller images.');

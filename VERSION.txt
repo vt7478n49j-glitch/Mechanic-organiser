@@ -1,10 +1,8 @@
-Mechanic Mate v43
-- Fixes persistent top-right Sync issue badge when status is actually Synced
-- Keeps verified automatic two-device sync from v42
-- Adds private Supabase Storage support for job photos
-- New job photos upload to Storage when configured
-- Existing embedded photos continue to display
-- Adds Test photo storage and Migrate existing photos controls
-- Deletes Storage object when a stored job photo is removed
-- Falls back to local embedded photo data if Storage is not configured, with a warning
-- Safety backups remain lightweight and omit image bytes
+Mechanic Mate v43.1 Photo Save Fix
+- Cleans old photo-heavy safety backups left by earlier versions
+- Reduces retained safety backups to 8
+- Retries core local save after trimming backups if browser quota is reached
+- No longer silently falls back to embedding photos in localStorage when Supabase Storage upload fails
+- Keeps selected photos visible and shows the exact Storage error instead
+- Adds Storage usage diagnostic button
+- Retains v43 private Supabase Storage and verified automatic sync
