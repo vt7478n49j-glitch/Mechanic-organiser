@@ -2518,27 +2518,42 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
   const SESSION_KEY = 'mechanic-mate-supabase-session';
   const LOCAL_UPDATED_KEY = 'mechanic-mate-local-updated-at';
   const LAST_CLOUD_KEY = 'mechanic-mate-last-cloud-updated-at';
-  function stableStringifyV414(value){
+  function stableStringifyV415(value){
     if(value===null || typeof value!=='object') return JSON.stringify(value);
-    if(Array.isArray(value)) return '['+value.map(stableStringifyV414).join(',')+']';
+    if(Array.isArray(value)) return '['+value.map(stableStringifyV415).join(',')+']';
     return '{'+Object.keys(value).sort().map(function(k){
-      return JSON.stringify(k)+':'+stableStringifyV414(value[k]);
+      return JSON.stringify(k)+':'+stableStringifyV415(value[k]);
     }).join(',')+'}';
   }
-  function dataFingerprintV414(value){
-    var s=stableStringifyV414(normaliseDb(value||{}));
-    var h1=2166136261>>>0, h2=0x9e3779b9>>>0;
+  function hash64V415(value){
+    var s=typeof value==='string'?value:stableStringifyV415(value);
+    var a=2166136261>>>0,b=2246822519>>>0;
     for(var i=0;i<s.length;i++){
       var c=s.charCodeAt(i);
-      h1^=c; h1=Math.imul(h1,16777619)>>>0;
-      h2^=(c+i); h2=Math.imul(h2,2246822519)>>>0;
+      a^=c; a=Math.imul(a,16777619)>>>0;
+      b^=(c+(i&255)); b=Math.imul(b,3266489917)>>>0;
     }
-    return (h1.toString(16).padStart(8,'0')+h2.toString(16).padStart(8,'0')).slice(0,8).toUpperCase();
+    return a.toString(16).padStart(8,'0').toUpperCase()+b.toString(16).padStart(8,'0').toUpperCase();
   }
-  function localFingerprintV414(){ return dataFingerprintV414(db); }
-  function cloudFingerprintV414(row){ return row ? dataFingerprintV414(row.data||{}) : '--------'; }
+  function dataFingerprintV415(value){ return hash64V415(normaliseDb(value||{})); }
+  function dataSummaryV415(value){
+    var d=normaliseDb(value||{}), jobs=d.jobs||[], latest=jobs.length?jobs[jobs.length-1]:null;
+    return {
+      fp:dataFingerprintV415(d),
+      jobs:jobs.length, customers:(d.customers||[]).length, parts:(d.parts||[]).length,
+      invoices:(d.invoices||[]).length, quotes:(d.quotes||[]).length,
+      latest:latest?String(latest.title||latest.id||'Untitled'):'—',
+      logo:hash64V415(String((d.settings||{}).companyLogo||'')).slice(0,10)
+    };
+  }
+  function summaryTextV415(label,value){
+    var s=dataSummaryV415(value);
+    return label+': '+s.fp+' | Jobs '+s.jobs+' | Latest '+s.latest+' | Logo '+s.logo;
+  }
+  function localFingerprintV414(){ return dataFingerprintV415(db); }
+  function cloudFingerprintV414(row){ return row ? dataFingerprintV415(row.data||{}) : '----------------'; }
   function syncProofTextV414(row){
-    return 'This device: '+localFingerprintV414()+' • Cloud: '+cloudFingerprintV414(row);
+    return summaryTextV415('Device',db)+'\n'+summaryTextV415('Cloud',row?row.data:{});
   }
 
 
@@ -2756,20 +2771,24 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
   };
 
   async function applyCloudData(row){
-    if(!row || !row.data) return false;
+    if(!row) return false;
     mmBackupLocal('before-cloud-download');
-    db=normaliseDb(row.data);
+    var incoming=normaliseDb(row.data||{});
+    db=incoming;
     localStorage.setItem(KEY,JSON.stringify(db));
     localStorage.setItem(LOCAL_UPDATED_KEY,row.updated_at||new Date().toISOString());
-    localStorage.setItem(LAST_CLOUD_KEY,row.updated_at||'');
-    cloudLastSync=row.updated_at||'';
-    render(); return true;
-    var expectedFp=cloudFingerprintV414(row);
-    var actualFp=localFingerprintV414();
-    if(expectedFp!==actualFp){
-      throw new Error('Cloud download verification failed ('+actualFp+' ≠ '+expectedFp+').');
-    }
-    return actualFp;
+    if(row.updated_at)localStorage.setItem(LAST_CLOUD_KEY,row.updated_at);
+    cloudLastSync=row.updated_at||cloudLastSync;
+
+    // Verify what was actually persisted, not merely the in-memory object.
+    var persisted;
+    try{ persisted=normaliseDb(JSON.parse(localStorage.getItem(KEY)||'{}')); }
+    catch(e){ throw new Error('Downloaded data could not be re-read from this device.'); }
+    var expected=dataFingerprintV415(incoming), actual=dataFingerprintV415(persisted);
+    if(expected!==actual) throw new Error('Downloaded data verification failed: '+actual+' != '+expected);
+    db=persisted;
+    render();
+    return true;
   }
 
   async function pullCloudIfNewer(force){
@@ -2882,20 +2901,47 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
   };
 
   
+  window.cloudForceUploadV415 = async function(){
+    if(!cloudSession){alert('Sign in first.');return;}
+    if(!confirm('Replace the cloud copy with THIS DEVICE? A local safety backup of the current cloud copy will be kept first.'))return;
+    try{
+      setCloudState('Uploading chosen device…',summaryTextV415('Device',db));
+      var before=await cloudRow();
+      if(before) mmBackupObject('cloud-before-forced-upload',before.data||{});
+      var res=await sbFetch('/rest/v1/mechanic_mate_data?on_conflict=user_id',{
+        method:'POST',
+        headers:{'Prefer':'resolution=merge-duplicates,return=representation'},
+        body:JSON.stringify({user_id:cloudSession.user.id,data:db,updated_at:new Date().toISOString()})
+      });
+      if(!res.ok)throw new Error(await res.text());
+      var after=await cloudRow();
+      var lf=dataFingerprintV415(db),cf=cloudFingerprintV414(after);
+      if(lf!==cf)throw new Error('Forced upload did not verify. Device '+lf+' / Cloud '+cf);
+      if(after&&after.updated_at){
+        localStorage.setItem(LAST_CLOUD_KEY,after.updated_at);
+        localStorage.setItem(LOCAL_UPDATED_KEY,after.updated_at);
+        cloudLastSync=after.updated_at;
+      }
+      setCloudState('Synced',syncProofTextV414(after));
+    }catch(e){
+      console.error(e);setCloudState('Upload failed',e.message||'Could not upload this device.');
+    }
+  };
+
   window.cloudVerifyV414 = async function(){
     if(!cloudSession){ alert('Sign in to Cloud Sync first.'); return; }
-    setCloudState('Verifying…','Comparing the actual device data with the cloud copy.');
+    setCloudState('Verifying…','Comparing actual content.');
     try{
       var row=await cloudRow();
-      var localFp=localFingerprintV414(), cloudFp=cloudFingerprintV414(row);
-      if(localFp===cloudFp){
-        setCloudState('Synced','Verified • This device: '+localFp+' • Cloud: '+cloudFp);
+      if(!row){setCloudState('No cloud row',summaryTextV415('Device',db));return;}
+      var localS=dataSummaryV415(db),cloudS=dataSummaryV415(row.data||{});
+      var details=syncProofTextV414(row);
+      if(localS.fp===cloudS.fp){
+        setCloudState('Synced','VERIFIED\n'+details);
       }else{
-        setCloudState('Sync mismatch','This device: '+localFp+' • Cloud: '+cloudFp+'. The actual data is different.');
+        setCloudState('Sync mismatch',details);
       }
-    }catch(e){
-      setCloudState('Verify failed',e.message||'Could not compare device and cloud.');
-    }
+    }catch(e){setCloudState('Verify failed',e.message||'Could not compare data.');}
   };
 
   window.cloudSyncNow = async function(){
@@ -2951,10 +2997,10 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '<p class="muted">Changes are saved to Supabase automatically and can be opened from your other signed-in devices.</p>' +
         '<div class="actions"><button class="primary" onclick="cloudSyncNow()">Sync now</button><button onclick="cloudVerifyV414()">Verify sync</button>' +
         '<button onclick="cloudDownloadToDevice()">Download cloud copy</button>' +
-        '<button onclick="cloudUploadThisDevice()">Upload this device</button>' +
+        '<button onclick="cloudForceUploadV415()">Upload this device</button>' +
         '<button class="danger" onclick="cloudSignOut()">Sign out</button></div>' +
         '<div class="actions"><button onclick="cloudShowSafetyBackups()">View safety backups</button><button onclick="cloudExportSafetyBackups()">Export safety backups</button></div>' +
-        '<div class="muted">Safe Sync v41.4 blocks stale devices from silently replacing a different cloud revision. Up to 20 automatic snapshots are kept locally on each device.</div></div>';
+        '<div class="muted">Safe Sync v41.5 blocks stale devices from silently replacing a different cloud revision. Up to 20 automatic snapshots are kept locally on each device.</div></div>';
     }else{
       cloudHtml =
         '<div class="card cloud-card"><b>Cloud sync</b>' +

@@ -1,8 +1,7 @@
-Mechanic Mate v41.4 Verifiable Sync
-- Adds content fingerprints for device and cloud data
-- Upload re-downloads the cloud row and verifies actual content before reporting Synced
-- Downloads verify the applied cloud data
-- Adds Verify sync button
-- Shows This device / Cloud fingerprint values
-- Reports Sync mismatch instead of false Synced when data differs
-- Retains all v41.3 fixes and features
+Mechanic Mate v41.5 Sync Diagnostics
+- Fixes unreachable post-download verification in v41.4
+- Uses a longer 64-bit-style content fingerprint
+- Shows job count, latest job and logo fingerprint for device/cloud
+- Download re-reads localStorage and verifies persisted content
+- Upload This Device uses a dedicated forced-upload path then re-fetches and verifies cloud
+- Synced is only shown after content comparison
