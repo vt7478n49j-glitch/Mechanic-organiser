@@ -510,7 +510,7 @@ a{
 <style>
 /* v30 quotes */
 .quote-work-row{display:grid;grid-template-columns:1fr 44px;gap:8px;align-items:end;margin:8px 0}
-.quote-part-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,.8fr) minmax(0,.9fr) 72px minmax(90px,.8fr) 44px;gap:8px;align-items:end;margin:8px 0;padding-top:8px;border-top:1px solid var(--line)}
+.quote-part-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,.8fr) minmax(0,.9fr) 72px minmax(90px,.8fr) minmax(90px,.8fr) 44px;gap:8px;align-items:end;margin:8px 0;padding-top:8px;border-top:1px solid var(--line)}
 .quote-part-row:first-child{border-top:0}
 .quote-preview{background:#F7F8FA!important;color:#111!important;border-radius:16px;padding:18px;margin-top:12px}
 .quote-preview *{box-sizing:border-box}
@@ -4061,6 +4061,31 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     return (q.partLines||[]).map(function(p){return (p.name||'Part')+' × '+Number(p.qty||1);}).join(', ');
   }
 
+  // Markup is a suggested customer price; each quote line can still be edited.
+  function quoteMarkupPercent(){
+    var value=Number((db.settings||{}).quoteMarkupPercent);
+    return Number.isFinite(value)&&value>=0?value:0;
+  }
+  var quoteSettingsBeforeMarkup=settings;
+  settings=function(){
+    var html=quoteSettingsBeforeMarkup();
+    var markup='<div class="card"><b>Quote parts markup</b>'+
+      '<p class="muted">A shortcut for pricing parts on quotes. Customer price = your cost + this percentage. You can change any price afterwards.</p>'+
+      '<label>Default markup on cost (%)</label><input id="quoteMarkupPercent" type="number" min="0" max="1000" step="0.1" value="'+quoteMarkupPercent()+'">'+
+      '<button class="primary" onclick="saveQuoteMarkupPercent()">Save markup</button></div>';
+    return html.replace('<div class="card"><b>Backup</b>',markup+'<div class="card"><b>Backup</b>');
+  };
+  window.saveQuoteMarkupPercent=function(){
+    var input=document.getElementById('quoteMarkupPercent');
+    var raw=input?input.value.trim():'';
+    var value=Number(raw);
+    if(raw===''||!Number.isFinite(value)||value<0||value>1000){
+      alert('Enter a markup percentage between 0 and 1000.');return;
+    }
+    db.settings.quoteMarkupPercent=value;
+    save();render();alert('Quote markup saved');
+  };
+
   // ----- form rows -----
   function workRows(items){
     items=Array.isArray(items)&&items.length?items:[{description:''}];
@@ -4083,7 +4108,8 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '<div><label>Part No.</label><input class="qp-partno" value="'+esc(x.partNo||'')+'"></div>'+
         '<div><label>Supplier</label><input class="qp-supplier" value="'+esc(x.supplier||'')+'" placeholder="e.g. Euro Car Parts"></div>'+
         '<div><label>Qty</label><input class="qp-qty" type="number" min="1" step="1" value="'+Math.max(1,Number(x.qty||1))+'" oninput="quoteRecalc()"></div>'+
-        '<div><label>Price each (£)</label><input class="qp-price" type="number" min="0" step="0.01" value="'+Number(x.unitPrice||0)+'" oninput="quoteRecalc()"></div>'+
+        '<div><label>My cost each (£)</label><input class="qp-cost" type="number" min="0" step="0.01" value="'+Number(x.cost||0)+'"></div>'+
+        '<div><label>Customer price each (£)</label><input class="qp-price" type="number" min="0" step="0.01" value="'+Number(x.unitPrice||0)+'" oninput="quoteRecalc()"><button type="button" onclick="quoteApplyMarkup(this)" style="margin-top:6px;width:100%">Use markup (+'+quoteMarkupPercent()+'%)</button></div>'+
         '<div class="qp-remove"><button type="button" class="danger" onclick="this.closest(\'.quote-part-row\').remove();quoteRecalc()">×</button></div>'+
       '</div>';
     }).join('');
@@ -4101,7 +4127,19 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     r.querySelector('.qp-name-input').value=p.name||'';
     r.querySelector('.qp-partno').value=p.partNo||'';
     var sup=r.querySelector('.qp-supplier'); if(sup) sup.value=p.supplier||'';
+    r.querySelector('.qp-cost').value=Number(p.cost||0).toFixed(2);
     r.querySelector('.qp-price').value=Number(p.charge!=null?p.charge:p.cost||0).toFixed(2);
+    quoteRecalc();
+  };
+  window.quoteApplyMarkup=function(button){
+    var row=button.closest('.quote-part-row');
+    if(!row)return;
+    var costInput=row.querySelector('.qp-cost'),priceInput=row.querySelector('.qp-price');
+    var cost=Number(costInput&&costInput.value);
+    if(!costInput||costInput.value.trim()===''||!Number.isFinite(cost)||cost<=0){
+      alert('Enter your cost for this part first.');return;
+    }
+    priceInput.value=(Math.round((cost*(1+quoteMarkupPercent()/100)+Number.EPSILON)*100)/100).toFixed(2);
     quoteRecalc();
   };
   function readQuoteWork(){
@@ -4115,8 +4153,9 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       var partNo=String((r.querySelector('.qp-partno')||{}).value||'').trim();
       var supplier=String((r.querySelector('.qp-supplier')||{}).value||'').trim();
       var qty=Math.max(1,Number((r.querySelector('.qp-qty')||{}).value||1));
+      var cost=Number((r.querySelector('.qp-cost')||{}).value||0);
       var unit=Number((r.querySelector('.qp-price')||{}).value||0);
-      return {name:name,partNo:partNo,supplier:supplier,qty:qty,unitPrice:unit,total:qty*unit};
+      return {name:name,partNo:partNo,supplier:supplier,qty:qty,cost:cost,unitPrice:unit,total:qty*unit};
     }).filter(function(x){return x.name;});
   }
   window.quoteRecalc=function(){
@@ -4157,7 +4196,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       '<div class="two"><div><label>Make</label><input id="qmake" value="'+esc(q.make||c.make||'')+'"></div><div><label>Model</label><input id="qmodel" value="'+esc(q.model||c.model||'')+'"></div></div>'+
       '<label>Engine</label><input id="qengine" value="'+esc(q.engineSize||c.engineSize||'')+'">'+
       '<div class="card"><div class="row"><b>Work required</b><button type="button" onclick="quoteAddWork()">＋ Add line</button></div><div id="quoteWorkRows">'+workRows(q.workItems||[])+'</div></div>'+
-      '<div class="card"><div class="row"><b>Parts pricing</b><button type="button" onclick="quoteAddPart()">＋ Add part</button></div><p class="muted">Pricing only — these do not consume stock until the quote becomes a job.</p><div id="quotePartRows">'+partRows(q.partLines||[])+'</div></div>'+
+      '<div class="card"><div class="row"><b>Parts pricing</b><button type="button" onclick="quoteAddPart()">＋ Add part</button></div><p class="muted">Your cost stays private. Only the customer price appears on the quotation. Parts do not consume stock until the quote becomes a job.</p><div id="quotePartRows">'+partRows(q.partLines||[])+'</div></div>'+
       '<div class="two"><div><label>Estimated labour hours</label><input id="qhours" type="number" min="0" step="0.25" value="'+Number(q.labourHours||0)+'" oninput="quoteRecalc()"></div>'+
       '<div><label>Labour rate (£/hr)</label><input id="qrate" type="number" min="0" step="0.01" value="'+Number(q.labourRate!=null?q.labourRate:(db.settings.hourlyRate||0))+'" oninput="quoteRecalc()"></div></div>'+
       '<div class="two"><div><label>Call-out / travel (£)</label><input id="qtravel" type="number" min="0" step="0.01" value="'+Number(q.travel||0)+'" oninput="quoteRecalc()"></div>'+
@@ -4235,7 +4274,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     return '<div class="quote-preview">'+
       '<div class="row" style="align-items:flex-start"><div>'+(s.companyLogo?'<img class="quote-logo" src="'+s.companyLogo+'" alt="Company logo">':'')+
       '<h2 style="margin:4px 0">'+esc(s.companyName||'Mechanic Mate')+'</h2><div class="muted">'+esc(s.companyPhone||'')+(s.companyEmail?'<br>'+esc(s.companyEmail):'')+'</div></div>'+
-      '<div style="text-align:right"><h2 style="font-size:30px;margin:0">QUOTATION</h2><b>'+esc(q.number||'')+'</b><br>'+esc(q.date||'')+'<br><b>'+esc(q.status||'Draft')+'</b></div></div>'+
+      '<div style="text-align:right"><h2 style="font-size:30px;margin:0">QUOTATION</h2><b>'+esc(q.number||'')+'</b><br>'+esc(q.date||'')+'</div></div>'+
       '<hr><div class="two"><div><h3>QUOTED TO</h3>'+esc(q.customer||'')+(c.address?'<br>'+esc(c.address).replace(/\n/g,'<br>'):'')+(q.email||c.email?'<br>'+esc(q.email||c.email):'')+'</div>'+
       '<div><h3>VEHICLE</h3>'+esc(q.reg||'')+'<br>'+esc([q.make,q.model,q.engineSize].filter(Boolean).join(' '))+'</div></div>'+
       (q.title?'<h3>'+esc(q.title)+'</h3>':'')+
@@ -4283,7 +4322,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     text(left,y,20,s.companyName||'Mechanic Mate',true);rt(y,25,'QUOTATION',true);y-=26;
     if(s.companyPhone){text(left,y,9,s.companyPhone,false);y-=13}
     if(s.companyEmail){text(left,y,9,s.companyEmail,false);y-=13}
-    rt(756,11,q.number||'',true);rt(739,10,q.date||'',false);rt(720,10,q.status||'Draft',true);
+    rt(756,11,q.number||'',true);rt(739,10,q.date||'',false);
     y=695;line();y-=24;
     text(left,y,12,'QUOTED TO',true);y-=18;wrap(q.customer||'',10,55,false);
     var c=quoteCustomer(q.customer||'');if(c.address){String(c.address).split(/\n/).forEach(function(a){wrap(a,9,62,false)})}
@@ -4383,8 +4422,8 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         'Job created.\n\nWould you like to add the '+quotedParts.length+
         ' quoted part'+(quotedParts.length===1?'':'s')+
         ' to Parts / unallocated stock?\n\n'+
-        'Name, part number, supplier, quantity and quoted customer price will be copied across. '+
-        'Your actual cost will be left at £0 until you enter what you paid.'
+        'Name, part number, supplier, quantity, your cost and quoted customer price will be copied across. '+
+        'Check your cost before invoicing if the supplier price changes.'
       );
 
       if(copyToStock){
@@ -4396,7 +4435,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
             partNo:p.partNo||'',
             supplier:p.supplier||'',
             stockQty:Math.max(1,Number(p.qty||1)),
-            cost:0,
+            cost:Number(p.cost||0),
             charge:Number(p.unitPrice||0),
             includedParts:Array.isArray(p.includedParts)?p.includedParts.map(function(x){return {...x};}):[],
             sourceQuoteId:q.id,
