@@ -1,5 +1,5 @@
-Mechanic Mate v43.5 Photo Meter API Fix
-- Fixes Photo cloud usage 'Load failed'
-- Usage meter now runs through the same authenticated Supabase Storage helper used by successful photo uploads
-- Keeps Storage bucket/session variables inside their correct script scope
-- No changes to working photo uploads, job sync, or cloud data
+Mechanic Mate v43.7 Quote Markup
+- Default parts markup percentage in Settings
+- Per-line Use markup button suggests customer price from cost
+- Manual prices remain editable and unchanged until button is pressed
+- Private parts cost and status-free customer quote from v43.6
