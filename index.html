@@ -4062,28 +4062,55 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
   }
 
   // Markup is a suggested customer price; each quote line can still be edited.
-  function quoteMarkupPercent(){
-    var value=Number((db.settings||{}).quoteMarkupPercent);
-    return Number.isFinite(value)&&value>=0?value:0;
+  function quoteMarkupTiers(){
+    var saved=(db.settings||{}).quoteMarkupTiers||{};
+    var defaults={limits:[20,300,600],percents:[40,30,25,15],minimumProfit:5};
+    var limits=Array.isArray(saved.limits)?saved.limits.map(Number):defaults.limits;
+    var percents=Array.isArray(saved.percents)?saved.percents.map(Number):defaults.percents;
+    var minimumProfit=saved.minimumProfit==null?defaults.minimumProfit:Number(saved.minimumProfit);
+    if(limits.length!==3||limits.some(function(n){return !Number.isFinite(n)||n<=0})||
+       limits[0]>=limits[1]||limits[1]>=limits[2])limits=defaults.limits;
+    if(percents.length!==4||percents.some(function(n){return !Number.isFinite(n)||n<0||n>1000}))percents=defaults.percents;
+    if(!Number.isFinite(minimumProfit)||minimumProfit<0)minimumProfit=defaults.minimumProfit;
+    return {limits:limits,percents:percents,minimumProfit:minimumProfit};
+  }
+  function quoteTierForCost(cost){
+    var tiers=quoteMarkupTiers(),index=cost<=tiers.limits[0]?0:cost<=tiers.limits[1]?1:cost<=tiers.limits[2]?2:3;
+    return {index:index,percent:tiers.percents[index],minimumProfit:index===0?tiers.minimumProfit:0};
   }
   var quoteSettingsBeforeMarkup=settings;
   settings=function(){
     var html=quoteSettingsBeforeMarkup();
-    var markup='<div class="card"><b>Quote parts markup</b>'+
-      '<p class="muted">A shortcut for pricing parts on quotes. Customer price = your cost + this percentage. You can change any price afterwards.</p>'+
-      '<label>Default markup on cost (%)</label><input id="quoteMarkupPercent" type="number" min="0" max="1000" step="0.1" value="'+quoteMarkupPercent()+'">'+
-      '<button class="primary" onclick="saveQuoteMarkupPercent()">Save markup</button></div>';
+    var tiers=quoteMarkupTiers();
+    var ranges=['£0 to £'+tiers.limits[0],'Above £'+tiers.limits[0]+' to £'+tiers.limits[1],
+      'Above £'+tiers.limits[1]+' to £'+tiers.limits[2],'Above £'+tiers.limits[2]];
+    var rows=tiers.percents.map(function(percent,i){
+      return '<div class="two"><div><label>'+ranges[i]+(i<3?' — upper cost (£)':' — no upper limit')+'</label>'+
+        (i<3?'<input id="quoteTierLimit'+i+'" type="number" min="0.01" step="0.01" value="'+tiers.limits[i]+'">':'<p class="muted">Any part above the third limit</p>')+'</div>'+
+        '<div><label>Markup on cost (%)</label><input id="quoteTierPercent'+i+'" type="number" min="0" max="1000" step="0.1" value="'+percent+'"></div></div>';
+    }).join('');
+    var markup='<div class="card"><b>Quote parts markup by cost</b>'+
+      '<p class="muted">Set the upper cost for the first three brackets and a markup for each. The last bracket covers everything above the third limit. Only pressing Use markup on a quote changes its customer price.</p>'+
+      rows+'<label>Minimum profit for the first bracket (£)</label><input id="quoteTierMinProfit" type="number" min="0" step="0.01" value="'+tiers.minimumProfit+'">'+
+      '<p class="muted">First bracket price uses the higher of cost plus markup or cost plus minimum profit. Prices for other brackets use their percentage. All prices remain editable.</p>'+
+      '<button class="primary" onclick="saveQuoteMarkupTiers()">Save price brackets</button></div>';
     return html.replace('<div class="card"><b>Backup</b>',markup+'<div class="card"><b>Backup</b>');
   };
-  window.saveQuoteMarkupPercent=function(){
-    var input=document.getElementById('quoteMarkupPercent');
-    var raw=input?input.value.trim():'';
-    var value=Number(raw);
-    if(raw===''||!Number.isFinite(value)||value<0||value>1000){
-      alert('Enter a markup percentage between 0 and 1000.');return;
+  window.saveQuoteMarkupTiers=function(){
+    function numberFrom(id){
+      var element=document.getElementById(id),raw=element?element.value.trim():'';
+      return raw===''?NaN:Number(raw);
     }
-    db.settings.quoteMarkupPercent=value;
-    save();render();alert('Quote markup saved');
+    var limits=[0,1,2].map(function(i){return numberFrom('quoteTierLimit'+i)});
+    var percents=[0,1,2,3].map(function(i){return numberFrom('quoteTierPercent'+i)});
+    var minimumProfit=numberFrom('quoteTierMinProfit');
+    if(limits.some(function(n){return !Number.isFinite(n)||n<=0})||limits[0]>=limits[1]||limits[1]>=limits[2]||
+      percents.some(function(n){return !Number.isFinite(n)||n<0||n>1000})||
+      !Number.isFinite(minimumProfit)||minimumProfit<0){
+      alert('Enter increasing cost limits, markups from 0 to 1000%, and a minimum profit of £0 or more.');return;
+    }
+    db.settings.quoteMarkupTiers={limits:limits,percents:percents,minimumProfit:minimumProfit};
+    save();render();alert('Quote price brackets saved');
   };
 
   // ----- form rows -----
@@ -4109,7 +4136,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '<div><label>Supplier</label><input class="qp-supplier" value="'+esc(x.supplier||'')+'" placeholder="e.g. Euro Car Parts"></div>'+
         '<div><label>Qty</label><input class="qp-qty" type="number" min="1" step="1" value="'+Math.max(1,Number(x.qty||1))+'" oninput="quoteRecalc()"></div>'+
         '<div><label>My cost each (£)</label><input class="qp-cost" type="number" min="0" step="0.01" value="'+Number(x.cost||0)+'"></div>'+
-        '<div><label>Customer price each (£)</label><input class="qp-price" type="number" min="0" step="0.01" value="'+Number(x.unitPrice||0)+'" oninput="quoteRecalc()"><button type="button" onclick="quoteApplyMarkup(this)" style="margin-top:6px;width:100%">Use markup (+'+quoteMarkupPercent()+'%)</button></div>'+
+        '<div><label>Customer price each (£)</label><input class="qp-price" type="number" min="0" step="0.01" value="'+Number(x.unitPrice||0)+'" oninput="quoteRecalc()"><button type="button" onclick="quoteApplyMarkup(this)" style="margin-top:6px;width:100%">Use price bracket</button></div>'+
         '<div class="qp-remove"><button type="button" class="danger" onclick="this.closest(\'.quote-part-row\').remove();quoteRecalc()">×</button></div>'+
       '</div>';
     }).join('');
@@ -4139,7 +4166,9 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     if(!costInput||costInput.value.trim()===''||!Number.isFinite(cost)||cost<=0){
       alert('Enter your cost for this part first.');return;
     }
-    priceInput.value=(Math.round((cost*(1+quoteMarkupPercent()/100)+Number.EPSILON)*100)/100).toFixed(2);
+    var tier=quoteTierForCost(cost);
+    var markup=Math.max(cost*tier.percent/100,tier.minimumProfit);
+    priceInput.value=(Math.round((cost+markup+Number.EPSILON)*100)/100).toFixed(2);
     quoteRecalc();
   };
   function readQuoteWork(){

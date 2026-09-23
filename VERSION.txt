@@ -1,5 +1,5 @@
-Mechanic Mate v43.7 Quote Markup
-- Default parts markup percentage in Settings
-- Per-line Use markup button suggests customer price from cost
-- Manual prices remain editable and unchanged until button is pressed
-- Private parts cost and status-free customer quote from v43.6
+Mechanic Mate v43.8 Tiered Quote Markup
+- Editable cost bands, upper limits and markup percentages in Settings
+- Defaults: up to £20 at 40% with £5 minimum profit; to £300 at 30%; to £600 at 25%; above £600 at 15%
+- Apply per quote part with Use price bracket; customer price stays editable
+- Existing quotes and stored prices remain unchanged until manually edited
