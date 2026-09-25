@@ -1,4 +1,7 @@
-Mechanic Mate v43.8 Tiered Quote Markup
+Mechanic Mate v43.9 Mobile Quote Preview
+- Quote preview scales to fit phone screens without clipping the heading or parts table
+- Print layout and downloadable quote PDF retain their full page layout
+- Includes v43.8 tiered quote markup
 - Editable cost bands, upper limits and markup percentages in Settings
 - Defaults: up to £20 at 40% with £5 minimum profit; to £300 at 30%; to £600 at 25%; above £600 at 15%
 - Apply per quote part with Use price bracket; customer price stays editable

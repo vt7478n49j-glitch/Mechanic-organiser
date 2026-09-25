@@ -520,6 +520,15 @@ a{
 .quote-preview th,.quote-preview td{padding:8px 4px;border-bottom:1px solid #ddd;text-align:left;font-size:12px}
 .quote-preview th:last-child,.quote-preview td:last-child{text-align:right}
 .quote-preview .quote-total{text-align:right;font-size:22px;font-weight:900;margin-top:16px}
+#quotePreview{min-width:0}
+#quotePreview .quote-preview-frame{width:100%;max-width:720px;margin:12px auto 0;position:relative}
+#quotePreview .quote-preview{position:absolute;top:0;left:0;width:720px;margin:0;transform-origin:top left;overflow-wrap:anywhere}
+#quotePreview .quote-preview .two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.quote-preview table{table-layout:fixed}
+.quote-preview th,.quote-preview td{overflow-wrap:anywhere}
+.quote-preview th:nth-last-child(-n+3),.quote-preview td:nth-last-child(-n+3){white-space:nowrap}
+#quotePreview .quote-preview .row>div{min-width:0}
+#quotePreview .actions button{flex:1 1 145px}
 .quote-status{display:inline-block;padding:5px 9px;border-radius:999px;background:#1C2026;border:1px solid #343A43;font-size:11px;font-weight:800}
 .quote-status.accepted,.quote-status.converted{color:#70D795}
 .quote-status.declined{color:#FF7B86}
@@ -533,6 +542,8 @@ a{
   body.quote-printing > *{display:none!important}
   #quotePrintHost{display:block!important;position:absolute;inset:0;background:#fff;padding:0}
   #quotePrintHost .quote-preview{display:block!important;margin:0;border-radius:0}
+  #quotePrintHost .two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  #quotePrintHost .quote-logo{width:110px!important;height:110px!important;max-width:110px!important;max-height:110px!important}
 }
 </style>
 
@@ -4316,14 +4327,28 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       '<div class="quote-total">Estimated Total: '+quoteMoney(q.total!=null?q.total:quoteTotal(q))+'</div>'+
       '<div class="quote-disclaimer">This quotation is an estimate based on the work and parts listed above. Parts prices are subject to change depending on supplier pricing and availability. Any additional work or significant price changes will be discussed before proceeding.<br><br><b>Quote valid for 30 days from the date shown above.</b></div></div>';
   }
-  window.closeQuotePreview=function(){var x=document.getElementById('quotePreview');if(x)x.remove();};
+  window.closeQuotePreview=function(){var x=document.getElementById('quotePreview');if(x){if(x.quoteResizeObserver)x.quoteResizeObserver.disconnect();x.remove();}};
   window.viewQuote=function(id,button){
     var q=db.quotes.find(function(x){return x.id===id;});if(!q)return;
     closeQuotePreview();
     var host=document.createElement('div');host.id='quotePreview';
-    host.innerHTML='<div class="actions"><button class="secondary" onclick="closeQuotePreview()">Close</button><button class="primary" onclick="printQuote(\''+id+'\')">Print / Save PDF</button><button class="primary" onclick="shareQuotePdf(\''+id+'\')">Email / Share PDF</button></div>'+quotePreviewHtml(q);
+    host.innerHTML='<div class="actions"><button class="secondary" onclick="closeQuotePreview()">Close</button><button class="primary" onclick="printQuote(\''+id+'\')">Print / Save PDF</button><button class="primary" onclick="shareQuotePdf(\''+id+'\')">Email / Share PDF</button></div><div class="quote-preview-frame">'+quotePreviewHtml(q)+'</div>';
     var card=button&&button.closest?button.closest('.card'):document.getElementById('app');
     card.appendChild(host);
+    var frame=host.querySelector('.quote-preview-frame'),sheet=frame.querySelector('.quote-preview');
+    function fitQuotePreview(){
+      if(!frame.isConnected)return;
+      var scale=Math.min(1,frame.clientWidth/720);
+      sheet.style.transform='scale('+scale+')';
+      frame.style.height=Math.ceil(sheet.offsetHeight*scale)+'px';
+    }
+    fitQuotePreview();
+    var resizeObserver=new ResizeObserver(fitQuotePreview);
+    resizeObserver.observe(frame);
+    resizeObserver.observe(sheet);
+    host.quoteResizeObserver=resizeObserver;
+    if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fitQuotePreview);
+    var logo=sheet.querySelector('.quote-logo');if(logo)logo.addEventListener('load',fitQuotePreview,{once:true});
     try{host.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){host.scrollIntoView();}
   };
   window.printQuote=function(id){
