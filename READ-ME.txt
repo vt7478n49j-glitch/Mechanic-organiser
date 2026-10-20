@@ -1,0 +1,67 @@
+Mechanic Mate v43.10
+
+Prepared from the v43.9 HTML and service worker supplied in this chat.
+This is a local update package. The GitHub repository and live site have not been changed.
+
+WHAT CHANGED
+
+1. Settings > Cloud sync now includes Forgot password?. Enter your account email
+   and press that button to request a reset email. Opening the email link returns
+   to a Reset your password screen with new-password and confirmation fields.
+   Password recovery uses a separate temporary session and does not trigger data
+   synchronisation. After saving the password, sign in with the new password.
+
+2. Dashboard and Jobs use the same card and badge colours:
+   Pending: grey
+   Booked: blue
+   In progress: purple
+   Ready to Invoice: amber
+   Complete (with an invoice already linked): light green
+   Invoiced: teal
+   Paid: green
+   Cancelled: red
+   Status labels remain visible, and colours update with status changes.
+
+3. New quotes use QUO-DDMMYY-NN, for example QUO-290926-01.
+   The sequence advances per quote date. Changing the date on a new quote updates
+   the suggested number. Existing saved quote and invoice numbers are preserved.
+   Duplicate quote numbers and invalid quote dates are rejected on save.
+
+4. The service worker has a new cache version and caches only same-origin GET
+   requests, so authenticated Supabase lookups are not stored in its offline cache.
+
+FILES TO REPLACE WHEN YOU ARE READY TO PUBLISH
+
+index.html
+sw.js
+VERSION.txt
+
+Keep your existing manifest, icons and all other repository files in place.
+READ-ME.txt is for you; it does not need to be uploaded to GitHub Pages.
+
+PASSWORD RESET RETURN ADDRESS
+
+The app requests a return to its current website folder. On your deployed site:
+https://vt7478n49j-glitch.github.io/Mechanic-organiser/
+
+That exact address must be allowed by your Supabase redirect configuration.
+The Supabase configuration was not accessed or changed during this update.
+Use the published website to test email recovery, not a downloaded file opened
+directly from your computer.
+
+CHECKS COMPLETED
+
+All 13 inline scripts and the service worker pass JavaScript syntax checks.
+Simulated checks passed for quote form integration, daily numbering and gaps,
+blank-number fallback, existing document preservation, duplicate/date validation,
+all status colours and the shared Dashboard/Jobs card renderer.
+Simulated recovery checks passed for email requests, rate-limit errors, link
+validation, address-bar cleanup, reload, password confirmation/length, update
+failure/retry/success, expired/missing/invalid links, cancellation and session
+isolation. No real reset emails were sent and no accounts were changed.
+
+STILL TO CHECK ON THE PUBLISHED UPDATE
+
+The environment blocked the automated browser launch, so desktop/mobile layout
+and browser interactions have not been visually verified. A real reset-email
+round trip also remains to be tested with your existing Supabase configuration.

@@ -1,8 +1,7 @@
-Mechanic Mate v43.9 Mobile Quote Preview
-- Quote preview scales to fit phone screens without clipping the heading or parts table
-- Print layout and downloadable quote PDF retain their full page layout
-- Includes v43.8 tiered quote markup
-- Editable cost bands, upper limits and markup percentages in Settings
-- Defaults: up to £20 at 40% with £5 minimum profit; to £300 at 30%; to £600 at 25%; above £600 at 15%
-- Apply per quote part with Use price bracket; customer price stays editable
-- Existing quotes and stored prices remain unchanged until manually edited
+Mechanic Mate v43.10
+- Forgot password email request and password recovery screen in Settings / Cloud sync
+- Recovery validates the email-link session without triggering data sync
+- Consistent job card colours in Dashboard and Jobs for every workflow status
+- New quote numbers use QUO-DDMMYY-NN, matching invoice numbering
+- Existing quote and invoice references are preserved
+- Retains v43.9 mobile quote preview and tiered markup

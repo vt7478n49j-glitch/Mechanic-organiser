@@ -614,6 +614,21 @@ a{
   .booking-picker-job{font-size:8px;padding:2px 3px}
 }
 </style>
+<style>
+/* v43.10: the same status colours in Jobs and Dashboard, with text labels. */
+.job-status-card.job-status-pending{--job-colour:#a8b2c2;--job-tint:#1b2029}
+.job-status-card.job-status-booked{--job-colour:#70baff;--job-tint:#142331}
+.job-status-card.job-status-progress{--job-colour:#c4a1ff;--job-tint:#241c32}
+.job-status-card.job-status-ready{--job-colour:#ffb54a;--job-tint:#302414}
+.job-status-card.job-status-complete{--job-colour:#8fd8af;--job-tint:#172b23}
+.job-status-card.job-status-invoiced{--job-colour:#6dd9dd;--job-tint:#142b2e}
+.job-status-card.job-status-paid{--job-colour:#7fdfa6;--job-tint:#172b20}
+.job-status-card.job-status-cancelled{--job-colour:#ff9b9b;--job-tint:#301c22}
+.card.job-status-card{background:var(--job-tint)!important;border-color:var(--job-colour)!important;border-left-width:5px}
+.job-status-card .job-status-pill{background:#090b0f!important;color:var(--job-colour)!important;border:1px solid var(--job-colour);font-weight:700;flex-shrink:0}
+.job-status-card .booked-date{color:var(--job-colour)!important}
+.recovery-message{white-space:pre-line;margin:12px 0;line-height:1.5}
+</style>
 </head><body>
 <div class="topbar"><div class="brandtext"><h1>🔧 Mechanic Mate</h1><div class="sub">Private mobile mechanic job manager</div></div><img id="headerLogo" class="app-logo hidden" alt="Company logo"></div><div id="nav" class="nav"></div><main id="app"></main><div id="modal"></div><div id="bookingPickerHost"></div>
 <script>
@@ -2657,6 +2672,115 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
   }
 
 
+  // v43.10 recovery credentials never enter the cloud data-sync session.
+const RECOVERY_KEY_V4310='mechanic-mate-password-recovery-v4310';
+const recoveryHashV4310=new URLSearchParams(location.hash.slice(1));
+const recoveryQueryV4310=new URLSearchParams(location.search);
+let recoverySessionV4310=null;
+try{recoverySessionV4310=JSON.parse(sessionStorage.getItem(RECOVERY_KEY_V4310)||'null');}catch(e){}
+let recoveryActiveV4310=recoveryHashV4310.get('type')==='recovery'||recoveryHashV4310.has('error')||recoveryHashV4310.has('error_code')||recoveryQueryV4310.has('error')||!!recoverySessionV4310;
+let recoveryReadyV4310=false;
+let recoveryBusyV4310=false;
+let recoveryMessageV4310='Checking your reset link…';
+let resetEmailBusyV4310=false;
+
+function recoveryHtmlV4310(){
+  return '<div class="card cloud-card"><h2>Reset your password</h2>'+
+    '<p class="recovery-message" role="status" aria-live="polite">'+esc(recoveryMessageV4310)+'</p>'+
+    (recoveryReadyV4310?'<form onsubmit="event.preventDefault();cloudUpdatePasswordV4310()">'+
+      '<label for="recoveryPasswordV4310">New password</label><input id="recoveryPasswordV4310" type="password" autocomplete="new-password" minlength="6" required>'+
+      '<label for="recoveryConfirmV4310">Confirm new password</label><input id="recoveryConfirmV4310" type="password" autocomplete="new-password" minlength="6" required>'+
+      '<button class="primary" type="submit" '+(recoveryBusyV4310?'disabled':'')+'>'+(recoveryBusyV4310?'Saving…':'Save new password')+'</button></form>':
+      '<label for="cloudEmail">Account email</label><input id="cloudEmail" type="email" autocomplete="email" placeholder="you@example.com">'+
+      '<button onclick="cloudForgotPasswordV4310()">Send a new reset email</button>')+
+    '<div class="actions"><button onclick="cloudCancelRecoveryV4310()" '+(recoveryBusyV4310?'disabled':'')+'>Back to sign in</button></div></div>';
+}
+
+window.cloudForgotPasswordV4310=async function(){
+  if(resetEmailBusyV4310)return;
+  const emailInput=document.getElementById('cloudEmail');
+  const email=String(emailInput&&emailInput.value||'').trim();
+  if(!email||!emailInput.checkValidity()){alert('Enter your account email address first.');if(emailInput)emailInput.focus();return;}
+  if(!/^https?:$/.test(location.protocol)){alert('Open the published Mechanic Mate website to request a password reset.');return;}
+  resetEmailBusyV4310=true;
+  try{
+    const redirectTo=new URL('./',location.href).href;
+    await supabaseRequest('/auth/v1/recover?redirect_to='+encodeURIComponent(redirectTo),{
+      method:'POST',auth:false,body:JSON.stringify({email:email})
+    });
+    alert('If an account exists for that email, a password reset link has been sent. Check your inbox and spam folder, then open the newest link.');
+  }catch(e){alert('Could not send the reset email: '+(e.message||'Please try again.'));}
+  finally{resetEmailBusyV4310=false;}
+};
+
+async function initialiseRecoveryV4310(){
+  const error=recoveryHashV4310.get('error_description')||recoveryHashV4310.get('error')||recoveryHashV4310.get('error_code')||recoveryQueryV4310.get('error_description')||recoveryQueryV4310.get('error');
+  // Remove credentials from the address bar before any asynchronous work.
+  const cleanUrl=new URL(location.href);cleanUrl.hash='';
+  ['error','error_code','error_description'].forEach(function(key){cleanUrl.searchParams.delete(key);});
+  history.replaceState(null,'',cleanUrl.pathname+cleanUrl.search);
+  try{
+    if(error)throw new Error('This reset link has expired or is invalid. Request a new reset email.');
+    if(recoveryHashV4310.get('type')==='recovery'){
+      const access=recoveryHashV4310.get('access_token');
+      if(!access)throw new Error('This reset link is incomplete. Request a new reset email.');
+      recoverySessionV4310={access_token:access,expires_at:Number(recoveryHashV4310.get('expires_at'))||Math.floor(Date.now()/1000)+Number(recoveryHashV4310.get('expires_in')||3600)};
+      sessionStorage.setItem(RECOVERY_KEY_V4310,JSON.stringify(recoverySessionV4310));
+    }
+    if(!recoverySessionV4310||!recoverySessionV4310.access_token||Number(recoverySessionV4310.expires_at)*1000<=Date.now()){
+      throw new Error('This reset link has expired. Request a new reset email.');
+    }
+    await supabaseRequest('/auth/v1/user',{method:'GET',auth:false,headers:{Authorization:'Bearer '+recoverySessionV4310.access_token}});
+    recoveryReadyV4310=true;
+    recoveryMessageV4310='Choose a new password of at least 6 characters. Your jobs and saved data will stay unchanged.';
+  }catch(e){
+    recoveryReadyV4310=false;recoverySessionV4310=null;
+    sessionStorage.removeItem(RECOVERY_KEY_V4310);
+    recoveryMessageV4310='Could not verify the reset link: '+(e.message||'Request a new reset email.');
+  }
+  render();
+}
+
+window.cloudUpdatePasswordV4310=async function(){
+  if(!recoveryReadyV4310||recoveryBusyV4310||!recoverySessionV4310)return;
+  const password=document.getElementById('recoveryPasswordV4310').value;
+  const confirm=document.getElementById('recoveryConfirmV4310').value;
+  if(password.length<6){alert('Use a password of at least 6 characters.');return;}
+  if(password!==confirm){alert('The two passwords do not match.');return;}
+  if(Number(recoverySessionV4310.expires_at)*1000<=Date.now()){
+    recoveryReadyV4310=false;recoveryMessageV4310='This reset link has expired. Request a new reset email.';render();return;
+  }
+  recoveryBusyV4310=true;
+  const button=document.querySelector('.cloud-card button[type="submit"]');
+  if(button){button.disabled=true;button.textContent='Saving…';}
+  try{
+    await supabaseRequest('/auth/v1/user',{method:'PUT',auth:false,
+      headers:{Authorization:'Bearer '+recoverySessionV4310.access_token},body:JSON.stringify({password:password})});
+    recoverySessionV4310=null;recoveryActiveV4310=false;recoveryReadyV4310=false;
+    sessionStorage.removeItem(RECOVERY_KEY_V4310);
+    storeSession(null);
+    setCloudState('Password updated. Sign in with your new password.','');
+    render();
+    alert('Password updated. Sign in with your new password to reconnect cloud sync.');
+  }catch(e){
+    // Keep the form and entered passwords so a transient error can be retried.
+    const message=document.querySelector('.cloud-card .recovery-message');
+    recoveryMessageV4310='Could not update the password: '+(e.message||'Try again or request a new reset email.');
+    if(message)message.textContent=recoveryMessageV4310;
+  }finally{
+    recoveryBusyV4310=false;
+    if(button){button.disabled=false;button.textContent='Save new password';}
+  }
+};
+
+window.cloudCancelRecoveryV4310=function(){
+  if(recoveryBusyV4310)return;
+  recoveryActiveV4310=false;recoveryReadyV4310=false;recoverySessionV4310=null;
+  sessionStorage.removeItem(RECOVERY_KEY_V4310);
+  storeSession(null);setCloudState('Not signed in','');render();
+};
+
+
   let cloudSession = null;
   let cloudSaveTimer = null;
   let manualCloudOperationV416=false;
@@ -2788,7 +2912,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     if(!badge) return;
     if(!cloudSession){
       badge.className='cloud-badge off';
-      badge.textContent='☁️ Local only';
+      badge.textContent=recoveryActiveV4310?'☁️ Password recovery':'☁️ Local only';
     }else if(cloudPushBusy || cloudPullBusy || /^Uploading|^Downloading|^Verifying|^Checking/i.test(cloudStatus||'')){
       badge.className='cloud-badge warn';
       badge.textContent='☁️ Syncing…';
@@ -2948,6 +3072,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
   }
 
   window.cloudSignIn = async function(){
+    if(recoveryActiveV4310)return;
     const email = String((document.getElementById('cloudEmail')||{}).value || '').trim();
     const password = String((document.getElementById('cloudPassword')||{}).value || '');
     if(!email || !password){ alert('Enter your email and password.'); return; }
@@ -2970,6 +3095,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
   };
 
   window.cloudSignUp = async function(){
+    if(recoveryActiveV4310)return;
     const email = String((document.getElementById('cloudEmail')||{}).value || '').trim();
     const password = String((document.getElementById('cloudPassword')||{}).value || '');
     if(!email || !password){ alert('Enter an email and password first.'); return; }
@@ -3450,7 +3576,9 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
   const previousSettings = settings;
   settings = function(){
     let cloudHtml = '';
-    if(cloudSession){
+    if(recoveryActiveV4310){
+      cloudHtml = recoveryHtmlV4310();
+    }else if(cloudSession){
       cloudHtml =
         '<div class="card cloud-card"><b>Cloud sync</b>' +
         '<div class="cloud-status"><div class="cloud-email">☁️ ' + esc(getUserEmail()) + '</div>' +
@@ -3472,7 +3600,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '<label>Email</label><input id="cloudEmail" type="email" autocomplete="email" placeholder="you@example.com">' +
         '<label>Password</label><input id="cloudPassword" type="password" autocomplete="current-password" placeholder="Password">' +
         '<div class="actions"><button class="primary" onclick="cloudSignIn()">Sign in</button>' +
-        '<button onclick="cloudSignUp()">Create cloud account</button></div>' +
+        '<button onclick="cloudSignUp()">Create cloud account</button><button onclick="cloudForgotPasswordV4310()">Forgot password?</button></div>' +
         '<div class="cloud-status"><span class="muted">' + esc(cloudStatus) +
         (cloudError ? '<br>' + esc(cloudError) : '') + '</span></div></div>';
     }
@@ -3480,7 +3608,12 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     return cloudHtml + previousSettings();
   };
 
-  loadSession();
+  if(recoveryActiveV4310){
+    page='Settings';
+    initialiseRecoveryV4310();
+  }else{
+    loadSession();
+  }
   updateCloudBadge();
 
   if(cloudSession){
@@ -4056,12 +4189,11 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     return (db.customers||[]).find(function(c){return c.name===name;}) || {};
   }
   function quoteMoney(v){ return money(Number(v)||0); }
-  function quoteNo(){
-    var nums=(db.quotes||[]).map(function(q){
-      var m=String(q.number||'').match(/(\d+)$/); return m?Number(m[1]):0;
-    });
-    return 'QUO-'+String((Math.max.apply(null,[0].concat(nums))+1)).padStart(4,'0');
+  function quoteToday(){
+    var d=new Date();
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
   }
+  function quoteNo(date,id){return v41QuoteNo(date||quoteToday(),id);}
   function quoteTotal(q){
     var labour=Number(q.labourHours||0)*Number(q.labourRate||0);
     var parts=(q.partLines||[]).reduce(function(a,p){return a+Number(p.total!=null?p.total:(Number(p.qty||1)*Number(p.unitPrice||0)));},0);
@@ -4225,12 +4357,12 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       return '<option value="'+esc(x.name)+'" '+(x.name===q.customer?'selected':'')+'>'+esc(x.name)+(x.reg?' • '+esc(x.reg):'')+'</option>';
     }).join('');
     openModal(id?'Edit Quote':'New Quote',
-      '<label>Quote number</label><input id="qnumber" value="'+esc(q.number||quoteNo())+'">'+
+      '<label>Quote number</label><input id="qnumber" value="'+esc(q.number||quoteNo(q.date))+'">'+
       '<label>Customer</label><select id="qcustomersel" onchange="quoteFillCustomer(this.value)">'+opts+'</select>'+
       '<label>Customer name</label><input id="qcustomer" value="'+esc(q.customer||'')+'">'+
       '<label>Customer email</label><input id="qemail" type="email" value="'+esc(q.email||c.email||'')+'">'+
       '<label>Quote / job title</label><input id="qtitle" value="'+esc(q.title||'')+'" placeholder="e.g. Full service and front brakes">'+
-      '<div class="two"><div><label>Date</label><input id="qdate" class="date-safe" type="text" placeholder="YYYY-MM-DD" value="'+esc(q.date||new Date().toISOString().slice(0,10))+'" oninput="if(!\''+(id||'')+'\')qnumber.value=v41QuoteNo(this.value)"></div>'+
+      '<div class="two"><div><label>Date</label><input id="qdate" class="date-safe" type="text" placeholder="YYYY-MM-DD" value="'+esc(q.date||quoteToday())+'" oninput="if(!\''+(id||'')+'\')qnumber.value=v41QuoteNo(this.value)"></div>'+
       '<div><label>Status</label><select id="qstatus"><option>Draft</option><option>Sent</option><option>Accepted</option><option>Declined</option><option>Converted</option></select></div></div>'+
       '<label>Registration</label><input id="qreg" value="'+esc(q.reg||c.reg||c.vehicle||'')+'">'+
       '<div class="two"><div><label>Make</label><input id="qmake" value="'+esc(q.make||c.make||'')+'"></div><div><label>Model</label><input id="qmodel" value="'+esc(q.model||c.model||'')+'"></div></div>'+
@@ -4251,16 +4383,25 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 
   window.saveQuote=function(id){
     var old=(db.quotes||[]).find(function(x){return x.id===id;})||{};
+    var date=qdate.value.trim();
+    var parsed=new Date(date+'T12:00:00Z');
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(parsed.getTime())||parsed.toISOString().slice(0,10)!==date){
+      alert('Enter a valid quote date as YYYY-MM-DD.');return;
+    }
+    var number=qnumber.value.trim()||old.number||quoteNo(date,id);
+    if((db.quotes||[]).some(function(q){return q.id!==id&&q.number===number;})){
+      alert('That quote number is already in use. Choose a different number or reselect the date for the next available number.');return;
+    }
     var parts=readQuoteParts(),work=readQuoteWork();
     var q={
       ...old,
       id:id||gid(),
-      number:qnumber.value.trim()||quoteNo(),
+      number:number,
       customer:qcustomer.value.trim(),
       customerId:(quoteCustomer(qcustomer.value.trim())||{}).id||'',
       email:qemail.value.trim(),
       title:qtitle.value.trim(),
-      date:qdate.value.trim(),
+      date:date,
       status:qstatus.value,
       reg:qreg.value.trim(),
       make:qmake.value.trim(),
@@ -4696,12 +4837,16 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     save();closeM();render();
   };
 
+  function jobColourV4310(status){
+    return ({Pending:'pending',Booked:'booked','In progress':'progress','Ready to Invoice':'ready',Complete:'complete',Invoiced:'invoiced',Paid:'paid',Cancelled:'cancelled'})[status]||'pending';
+  }
   function cardV35(j){
     var ps=(typeof linkedParts==='function')?linkedParts(j):[];
     var lab=Number(j.hours||0)*Number((db.settings||{}).hourlyRate||0);
     var ready=needsInvoiceV35(j);
-    return '<div class="card '+(ready?'attention-card':'')+'">'+
-      '<div class="row wrap"><b>'+esc(j.title||'Untitled job')+'</b><span class="pill '+(ready?'status-ready':'')+'">'+esc(shownStatusV35(j))+'</span></div>'+
+    var colour=jobColourV4310(shownStatusV35(j));
+    return '<div class="card job-status-card job-status-'+colour+'">'+
+      '<div class="row wrap"><b>'+esc(j.title||'Untitled job')+'</b><span class="pill job-status-pill">'+esc(shownStatusV35(j))+'</span></div>'+
       '<div class="muted">'+esc(j.customer||'No customer')+' • '+esc(j.reg||'No reg')+' • Created '+esc(j.date||'')+'</div>'+
       (j.bookedFor?'<div class="booked-date">📅 Booked: '+esc(formatDateV35(j.bookedFor))+'</div>':(j.status==='Booked'?'<div class="muted">📅 Booked — no appointment date set</div>':''))+
       (j.hours?'<div class="muted">'+esc(j.hours)+'h labour = '+money(lab)+'</div>':'')+
@@ -4893,19 +5038,8 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
   }
 
-  // One-time migration of trial invoices and quotes.
-  if(!localStorage.getItem('mechanic-mate-v41-doc-migration')){
-    ['invoices','quotes'].forEach(function(kind){
-      var prefix=kind==='invoices'?'INV':'QUO', counters={};
-      (db[kind]||[]).slice().sort(function(a,b){return String(a.date||'').localeCompare(String(b.date||''));}).forEach(function(x){
-        var dc=v41DateCompact(x.date);
-        counters[dc]=(counters[dc]||0)+1;
-        x.number=prefix+'-'+dc+'-'+String(counters[dc]).padStart(2,'0');
-      });
-    });
-    localStorage.setItem(KEY,JSON.stringify(db));
-    localStorage.setItem('mechanic-mate-v41-doc-migration','1');
-  }
+  // Preserve every existing document reference, including on a newly synced device.
+  localStorage.setItem('mechanic-mate-v41-doc-migration','1');
 
   // ---------- Settings: payment details ----------
   var oldSettings=settings;
@@ -5155,8 +5289,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       }).join('')||'<div class="empty">No invoices.</div>');
   };
 
-  // Quote number generator override.
-  quoteNo=function(){return v41QuoteNo(new Date().toISOString().slice(0,10));};
+  // Quote forms call the shared date-based helper directly.
 
   // Ensure latest migrated state is rendered without creating a sync timestamp.
   localStorage.setItem(KEY,JSON.stringify(db));
