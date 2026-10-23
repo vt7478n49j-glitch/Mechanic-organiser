@@ -27,15 +27,24 @@
  }
  function useful(d){return ['jobs','customers','parts','invoices','quotes','inspections'].some(k=>d[k]?.length)||!!(d.settings&&(d.settings.companyName||d.settings.companyLogo||d.settings.companyPhone||d.settings.companyEmail));}
  class Engine{
-   constructor(adapter){this.a=adapter;this.running=null;this.timer=null;this.retry=0;this.account='';this.base=null;this.conflicts=[];this.resolutionContext=null;this.lastVerified='';this.wantsRun=false;this.status='Saved on device';}
+   constructor(adapter){this.a=adapter;this.running=null;this.timer=null;this.retry=0;this.account='';this.base=null;this.conflicts=[];this.resolutionContext=null;this.lastVerified='';this.wantsRun=false;this.status='Saved on device';this.blocked=false;this.reviewing=false;this.lastDiagnostic=null;this.contention=0;}
    state(status,detail=''){this.status=status;this.a.status(status,detail);}
    schedule(delay=700){clearTimeout(this.timer);this.timer=setTimeout(()=>{this.timer=null;this.run();},delay);}
-   changed(){this.retry=0;this.state(this.a.online()?'Saved on device':'Offline — saved on device');this.schedule();}
-   async accountReady(){const uid=await this.a.account();if(uid!==this.account){this.account=uid||'';this.base=uid?await this.a.loadBase(uid):null;this.conflicts=[];this.resolutionContext=null;this.lastVerified='';}return this.account;}
-   run(){if(this.running){this.wantsRun=true;return this.running;}this.running=this.cycle().catch(e=>{this.state('Sync failed — retrying',e.message||String(e));this.retry=Math.min(this.retry+1,6);this.schedule(Math.min(60000,1000*2**this.retry));return false;}).finally(()=>{this.running=null;if(this.wantsRun){this.wantsRun=false;this.schedule(400);}});return this.running;}
+   changed(){this.retry=0;if(!this.blocked)this.state(this.a.online()?'Saved on device':'Offline — saved on device');this.schedule();}
+   async accountReady(){const uid=await this.a.account();if(uid!==this.account){const loaded=uid?await this.a.loadBase(uid):null;this.account=uid||'';this.base=loaded;this.conflicts=[];this.resolutionContext=null;this.lastVerified='';}return this.account;}
+   failure(e){
+     if(e.name==='QuotaExceededError'||e.name==='SecurityError'||/quota|storage.{0,30}(full|unavailable|space)/i.test(e.message||'')){
+       this.blocked=true;clearTimeout(this.timer);this.lastDiagnostic={...(this.lastDiagnostic||{}),code:'device-storage',errorName:e.name};this.state('Device storage full — sync paused',e.message);return false;
+     }
+     if(e.name==='SyncStalledError'){this.blocked=true;clearTimeout(this.timer);this.state('Sync paused — needs attention',e.message);return false;}
+     this.state('Sync failed — retrying',e.message||String(e));this.retry=Math.min(this.retry+1,6);this.schedule(Math.min(60000,1000*2**this.retry));return false;
+   }
+   run(){if(this.blocked)return Promise.resolve(false);if(this.running){this.wantsRun=true;return this.running;}this.running=this.cycle().catch(e=>this.failure(e)).finally(()=>{this.running=null;if(this.wantsRun){this.wantsRun=false;if(!this.blocked)this.schedule(400);}});return this.running;}
+   retryNow(){this.blocked=false;this.contention=0;this.lastDiagnostic=null;return this.run();}
    async cycle(){
      if(!this.a.online()){this.state('Offline — saved on device');return false;}
      if(!await this.accountReady()){this.state('Saved on device — not signed in');return false;}
+     if(this.reviewing&&this.conflicts.length){this.state('Review changes','Your choices are open. Both copies are kept until you apply them.');return false;}
      const uid=this.account;
      for(let attempt=0;attempt<5;attempt++){
        this.state('Syncing…');const row=await this.a.read();if(!await this.stillAccount(uid))return false;
@@ -62,8 +71,15 @@
          if(!equal(local,joined.data))await this.a.install(joined.data);
          await this.remember(uid,joined.data,row.updated_at);this.verified();return true;
        }
-       const answer=await this.a.write(joined.data,row?.updated_at||null);if(!await this.stillAccount(uid))return false;
-       if(!answer.ok)continue; // Another device won the conditional write; read and merge again.
+       const answer=await this.a.write(joined.data,row?.updated_at||null,{exists:!!row});if(!await this.stillAccount(uid))return false;
+       if(!answer.ok){
+         const after=await this.a.read();if(!await this.stillAccount(uid))return false;
+         this.lastDiagnostic={code:'conditional-write-rejected',httpStatus:answer.httpStatus,returnedRows:answer.returnedRows,expectedRevision:row?.updated_at||null,observedRevision:after?.updated_at||null};
+         if((after?.updated_at||null)===(row?.updated_at||null)&&!equal(after?.data,joined.data)){
+           const e=new Error('The cloud did not accept a checked save, but its revision did not change. No copy has been overwritten. Open Sync details for the response information.');e.name='SyncStalledError';throw e;
+         }
+         continue;
+       }
        const verified=await this.a.read();if(!await this.stillAccount(uid))return false;
        if(!verified)throw Error('Cloud copy could not be read back.');
        // Account for edits made locally while the network write was in flight.
@@ -82,18 +98,23 @@
        if(!equal(verified.data,joined.data))continue; // Preserve a later write; never force our snapshot back over it.
        this.verified();return true;
      }
-     this.state('Waiting to sync','Both devices are saving. Retrying automatically.');this.schedule(1800);return false;
+     this.contention++;
+     if(this.contention>=3){this.lastDiagnostic={...(this.lastDiagnostic||{}),code:'repeated-cloud-changes'};const e=new Error('The cloud copy kept changing during verification. Both copies are kept. Close the app on the other device, then tap Retry sync once.');e.name='SyncStalledError';throw e;}
+     this.state('Waiting to sync','The cloud changed while saving. Retrying with a longer interval.');this.schedule(Math.min(60000,10000*2**(this.contention-1)));return false;
    }
    async stillAccount(uid){return await this.a.account()===uid;}
    async remember(uid,data,revision){const value={data:copy(data),revision};await this.a.saveBase(uid,value);this.base=value;}
-   verified(){this.retry=0;this.lastVerified=new Date().toISOString();this.state('Synced',this.lastVerified);}
-   async resolve(choices){
+   verified(){this.retry=0;this.contention=0;this.lastDiagnostic=null;this.lastVerified=new Date().toISOString();this.state('Synced',this.lastVerified);}
+   async resolve(choices,options={}){
      if(!this.resolutionContext)return this.run();
      const c=this.resolutionContext,latest=copy(this.a.get());
      if(!equal(latest,c.local)){this.state('Review changes','The device changed during review. Refreshing the comparison.');return this.run();}
+     const fresh=await this.a.read();
+     if(!equal(fresh?.data,c.remote)||!equal(this.a.get(),latest))throw new Error('One copy changed while these choices were open. Close this review, tap Sync now, and reopen it to compare the current values. No choices have been applied.');
      const joined=merge(c.base,latest,c.remote,choices);if(joined.conflicts.length)throw Error('Choose a version for every conflicting field.');
      // Save the selected result as a local edit against the reviewed cloud ancestor.
-     await this.a.install(joined.data);await this.remember(this.account,c.remote,c.revision);this.conflicts=[];this.resolutionContext=null;this.changed();return this.run();
+     try{await this.a.install(joined.data);await this.remember(this.account,c.remote,c.revision);}catch(e){this.failure(e);throw e;}
+     this.conflicts=[];this.resolutionContext=null;this.blocked=false;this.reviewing=false;this.changed();return options.sync===false?true:this.run();
    }
    stop(){clearTimeout(this.timer);}
  }

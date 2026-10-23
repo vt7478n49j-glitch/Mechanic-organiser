@@ -632,6 +632,7 @@ a{
 <link rel="stylesheet" href="./inspections.css">
 <link rel="stylesheet" href="./workshop.css">
 <script src="./dates.js"></script>
+<script src="./storage.js"></script>
 </head><body>
 <div class="topbar"><div class="brandtext"><h1>🔧 Mechanic Mate</h1><div class="sub">Private mobile mechanic job manager</div></div><img id="headerLogo" class="app-logo hidden" alt="Company logo"></div><div id="nav" class="nav"></div><main id="app"></main><div id="modal"></div><div id="bookingPickerHost"></div>
 <script>
@@ -730,24 +731,10 @@ function mmBackupObject(reason,obj){
 }
 
 function save(){
-  try{ mmBackupLocal('before-local-save'); }catch(_){}
-  try{
-    localStorage.setItem(KEY,JSON.stringify(db));
-  }catch(e){
-    // Legacy photo-heavy backups may have filled localStorage.
-    try{
-      var keys=[];
-      for(var i=0;i<localStorage.length;i++){
-        var k=localStorage.key(i);
-        if(k&&k.indexOf('mechanic-mate-backup-')===0)keys.push(k);
-      }
-      keys.sort();
-      while(keys.length>3)localStorage.removeItem(keys.shift());
-      localStorage.setItem(KEY,JSON.stringify(db));
-    }catch(e2){ throw e2; }
-  }
-  localStorage.setItem('mechanic-mate-local-updated-at',new Date().toISOString());
-  if(window.cloudScheduleSave) window.cloudScheduleSave();
+  try{mmBackupLocal('before-local-save');}catch(_){}
+  MMSafeStorage.write(KEY,JSON.stringify(db));
+  MMSafeStorage.optional('mechanic-mate-local-updated-at',new Date().toISOString());
+  if(window.cloudScheduleSave)window.cloudScheduleSave();
 }const money=n=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP'}).format(Number(n)||0);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const gid=()=>crypto.randomUUID();
 const jobLabel=j=>`${j.title||'Untitled'}${j.reg?' • '+j.reg:''}${j.customer?' • '+j.customer:''}`;
 function go(p){page=p;render()}function renderHeader(){const img=document.getElementById('headerLogo');if(db.settings.companyLogo){img.src=db.settings.companyLogo;img.classList.remove('hidden')}else{img.removeAttribute('src');img.classList.add('hidden')}}function render(){renderHeader();nav.innerHTML=['Dashboard','Jobs','Customers','Parts','Invoices','Settings'].map(x=>`<button class="${page===x?'on':''}" onclick="go('${x}')">${x}</button>`).join('');app.innerHTML=({Dashboard:dash,Jobs:jobs,Customers:customers,Parts:parts,Invoices:invoices,Settings:settings}[page])()}
@@ -1642,7 +1629,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     alert('Job deleted.');
   };
 
-  localStorage.setItem(KEY,JSON.stringify(db));
+  MMSafeStorage.write(KEY,JSON.stringify(db));
   render();
 })();
 </script>
@@ -1849,7 +1836,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     setTimeout(function(){ window.print(); setTimeout(function(){host.style.display='none';host.innerHTML='';},750); },100);
   };
 
-  localStorage.setItem(KEY,JSON.stringify(db));
+  MMSafeStorage.write(KEY,JSON.stringify(db));
   render();
 })();
 </script>
@@ -2194,7 +2181,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     }, 500);
   };
 
-  localStorage.setItem(KEY,JSON.stringify(db));
+  MMSafeStorage.write(KEY,JSON.stringify(db));
   render();
 })();
 </script>
@@ -2626,7 +2613,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     }, 500);
   };
 
-  localStorage.setItem(KEY,JSON.stringify(db));
+  MMSafeStorage.write(KEY,JSON.stringify(db));
   render();
 })();
 </script>
@@ -2948,8 +2935,8 @@ window.cloudCancelRecoveryV4310=function(){
     const uid = getUserId();
     if(!uid) return null;
     const result = await supabaseRequest('/rest/v1/mechanic_mate_data?select=data,updated_at&user_id=eq.'+encodeURIComponent(uid),{
-      method:'GET',
-      headers:{'Accept':'application/json'}
+      method:'GET',cache:'no-store',
+      headers:{'Accept':'application/json','Cache-Control':'no-cache'}
     });
     const rows = Array.isArray(result.body) ? result.body : [];
     return rows[0] || null;
@@ -2958,30 +2945,36 @@ window.cloudCancelRecoveryV4310=function(){
   window.mmCloudTransport={
     account:async function(){if(recoveryActiveV4310)return null;var s=await ensureSession();return s&&s.user&&s.user.id||null;},
     read:async function(){var row=await cloudRow();if(row)row.data=normaliseDb(row.data||{});return row;},
-    write:async function(data,revision){
+    write:async function(data,revision,meta){
       var uid=getUserId();if(!uid)throw new Error('Sign in to Cloud Sync.');
       var stamp=new Date(Math.max(Date.now(),(Date.parse(revision)||0)+1)).toISOString();
       var res;
-      if(revision){
-        res=await supabaseRequest('/rest/v1/mechanic_mate_data?user_id=eq.'+encodeURIComponent(uid)+'&updated_at=eq.'+encodeURIComponent(revision),{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify({data:data,updated_at:stamp})});
-        return {ok:Array.isArray(res.body)&&res.body.length===1,revision:stamp};
+      if(revision||(meta&&meta.exists)){
+        var condition=revision?'eq.'+encodeURIComponent(revision):'is.null';
+        res=await supabaseRequest('/rest/v1/mechanic_mate_data?user_id=eq.'+encodeURIComponent(uid)+'&updated_at='+condition,{method:'PATCH',headers:{Prefer:'return=representation',Accept:'application/json'},body:JSON.stringify({data:data,updated_at:stamp})});
+        var changed=Array.isArray(res.body)?res.body:(res.body&&res.body.updated_at?[res.body]:[]);
+        if(changed.length===1)return {ok:true,revision:changed[0].updated_at||stamp,httpStatus:res.res.status,returnedRows:1};
+        // Some backends omit representations. Count a save only after independent read-back agrees.
+        var after=await cloudRow();
+        if(after&&MMSyncCore.equal(normaliseDb(after.data||{}),normaliseDb(JSON.parse(JSON.stringify(data)))))return {ok:true,revision:after.updated_at,httpStatus:res.res.status,returnedRows:changed.length};
+        return {ok:false,httpStatus:res.res.status,returnedRows:changed.length};
       }
-      try{res=await supabaseRequest('/rest/v1/mechanic_mate_data',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({user_id:uid,data:data,updated_at:stamp})});return {ok:true,revision:stamp};}
+      try{res=await supabaseRequest('/rest/v1/mechanic_mate_data',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({user_id:uid,data:data,updated_at:stamp})});return {ok:true,revision:Array.isArray(res.body)&&res.body[0]?res.body[0].updated_at:stamp};}
       catch(e){if(await cloudRow())return {ok:false};throw e;}
     },
     status:function(s,d){setCloudState(s,d);},
     get:function(){return db;},
-    install:function(data){localStorage.setItem(KEY,JSON.stringify(data));db=data;},
-    acknowledged:function(rev){if(rev)localStorage.setItem(LAST_CLOUD_KEY,rev);},
+    install:function(data){MMSafeStorage.write(KEY,JSON.stringify(data));db=data;},
+    acknowledged:function(rev){if(rev)MMSafeStorage.optional(LAST_CLOUD_KEY,rev);},
     recovery:function(){return recoveryActiveV4310;}
   };
 
-  async function pushCloudNow(){return window.mmSync?window.mmSync.run():false;}
+  async function pushCloudNow(){return window.mmSync?window.mmSync.retryNow():false;}
 
   window.cloudScheduleSave=function(){if(window.mmSync)window.mmSync.changed();};
-  async function applyCloudData(){return window.mmSync?window.mmSync.run():false;}
-  async function pullCloudIfNewer(){return window.mmSync?window.mmSync.run():false;}
-  async function firstSyncAfterLogin(){if(recoveryActiveV4310)return;return window.mmSync?window.mmSync.run():false;}
+  async function applyCloudData(){return window.mmSync?window.mmSync.retryNow():false;}
+  async function pullCloudIfNewer(){return window.mmSync?window.mmSync.retryNow():false;}
+  async function firstSyncAfterLogin(){if(recoveryActiveV4310)return;return window.mmSync?window.mmSync.retryNow():false;}
 
   window.cloudSignIn = async function(){
     if(recoveryActiveV4310)return;
@@ -3044,8 +3037,8 @@ window.cloudCancelRecoveryV4310=function(){
   };
 
   
-  window.cloudForceUploadV415=async function(){return window.mmSync?window.mmSync.run():false;};
-  async function autoReconcileV42(){return window.mmSync?window.mmSync.run():false;}
+  window.cloudForceUploadV415=async function(){return window.mmSync?window.mmSync.retryNow():false;};
+  async function autoReconcileV42(){return window.mmSync?window.mmSync.retryNow():false;}
 
   const PHOTO_BUCKET_V43='mechanic-mate-photos';
   const photoObjectUrlsV43=new Map();
@@ -3311,7 +3304,7 @@ window.cloudCancelRecoveryV4310=function(){
         var uploaded=await uploadPhotoDataV43(item.job.id,item.photo);
         var pi=item.job.photos.findIndex(function(x){return x.id===item.photo.id;});
         if(pi>=0)item.job.photos[pi]=uploaded;
-        localStorage.setItem(KEY,JSON.stringify(db));
+        MMSafeStorage.write(KEY,JSON.stringify(db));
         done++;
       }catch(e){
         failed++;
@@ -3323,8 +3316,8 @@ window.cloudCancelRecoveryV4310=function(){
     render();
   };
 
-  window.cloudVerifyV414=async function(){return window.mmSync?window.mmSync.run():false;};
-  window.cloudSyncNow=async function(){return window.mmSync?window.mmSync.run():false;};
+  window.cloudVerifyV414=async function(){return window.mmSync?window.mmSync.retryNow():false;};
+  window.cloudSyncNow=async function(){return window.mmSync?window.mmSync.retryNow():false;};
   window.cloudUploadThisDevice=window.cloudSyncNow;
   window.cloudDownloadToDevice=window.cloudSyncNow;
 
@@ -3356,7 +3349,7 @@ window.cloudCancelRecoveryV4310=function(){
         (cloudError ? '<br>' + esc(cloudError) : '') + '</div></div>' +
         '<p class="muted">Changes are saved to Supabase automatically and can be opened from your other signed-in devices.</p>' +
         '<div class="actions"><button class="primary" onclick="cloudSyncNow()">Sync now</button>' +
-        '<button onclick="mmReviewConflicts()">Review overlapping changes</button>' +
+        '<button onclick="mmReviewConflicts()">Review overlapping changes</button><button onclick="mmShowSyncDetails()">Sync details</button>' +
         '' +
         '<button class="danger" onclick="cloudSignOut()">Sign out</button></div>' +
         '<div class="actions"><button onclick="cloudShowSafetyBackups()">View safety backups</button><button onclick="cloudExportSafetyBackups()">Export safety backups</button></div>' +
@@ -3627,7 +3620,7 @@ window.cloudCancelRecoveryV4310=function(){
       (history || '<div class="empty">No previous jobs for this customer.</div>'));
   };
 
-  localStorage.setItem(KEY,JSON.stringify(db));
+  MMSafeStorage.write(KEY,JSON.stringify(db));
   render();
 })();
 </script>
@@ -3914,7 +3907,7 @@ window.cloudCancelRecoveryV4310=function(){
     setTimeout(function(){window.print();setTimeout(function(){host.style.display='none';host.innerHTML='';},750);},100);
   };
 
-  localStorage.setItem(KEY,JSON.stringify(db));
+  MMSafeStorage.write(KEY,JSON.stringify(db));
   render();
 })();
 </script>
@@ -4413,7 +4406,7 @@ window.cloudCancelRecoveryV4310=function(){
     );
   };
 
-  localStorage.setItem(KEY,JSON.stringify(db));
+  MMSafeStorage.write(KEY,JSON.stringify(db));
   render();
 })();
 </script>
@@ -4504,7 +4497,7 @@ window.cloudCancelRecoveryV4310=function(){
       '<p class="muted">*Invoices minus recorded parts costs.</p>';
   };
 
-  localStorage.setItem(KEY,JSON.stringify(db));
+  MMSafeStorage.write(KEY,JSON.stringify(db));
   render();
 })();
 </script>
@@ -5031,7 +5024,7 @@ window.cloudCancelRecoveryV4310=function(){
   // Quote forms call the shared date-based helper directly.
 
   // Ensure latest migrated state is rendered without creating a sync timestamp.
-  localStorage.setItem(KEY,JSON.stringify(db));
+  MMSafeStorage.write(KEY,JSON.stringify(db));
   render();
 })();
 </script>
