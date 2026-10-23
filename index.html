@@ -629,6 +629,7 @@ a{
 .job-status-card .booked-date{color:var(--job-colour)!important}
 .recovery-message{white-space:pre-line;margin:12px 0;line-height:1.5}
 </style>
+<link rel="stylesheet" href="./inspections.css">
 </head><body>
 <div class="topbar"><div class="brandtext"><h1>🔧 Mechanic Mate</h1><div class="sub">Private mobile mechanic job manager</div></div><img id="headerLogo" class="app-logo hidden" alt="Company logo"></div><div id="nav" class="nav"></div><main id="app"></main><div id="modal"></div><div id="bookingPickerHost"></div>
 <script>
@@ -667,7 +668,7 @@ function mmBackupLocal(reason){
   try{
     const raw=localStorage.getItem(KEY); if(!raw)return;
     const key='mechanic-mate-backup-'+Date.now();
-    localStorage.setItem(key,JSON.stringify({createdAt:new Date().toISOString(),reason:reason||'before-save',data:JSON.parse(raw)}));
+    localStorage.setItem(key,JSON.stringify({createdAt:new Date().toISOString(),reason:reason||'before-save',data:mmBackupSnapshotV42(JSON.parse(raw))}));
     const keys=[];
     for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('mechanic-mate-backup-'))keys.push(k);}
     keys.sort(); while(keys.length>20)localStorage.removeItem(keys.shift());
@@ -690,6 +691,10 @@ function mmBackupSnapshotV42(obj){
         return x;
       });
     }
+  });
+  (copy.inspections||[]).forEach(function(i){
+    Object.values(i.results||{}).forEach(function(r){(r.photos||[]).forEach(function(p){if(p.data){delete p.data;p.backupImageOmitted=true;}});});
+    if(i.historyAttachment&&i.historyAttachment.data){delete i.historyAttachment.data;i.historyAttachment.backupImageOmitted=true;}
   });
   if(copy.settings && typeof copy.settings.companyLogo==='string' && copy.settings.companyLogo.length>500){
     delete copy.settings.companyLogo;
@@ -847,7 +852,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     if (labour) rows += '<tr><td>Labour' + (i.hours ? ' (' + esc(i.hours) + ' hours)' : '') + '</td><td>' + money(labour) + '</td></tr>';
     if (parts) rows += '<tr><td>Parts</td><td>' + money(parts) + '</td></tr>';
     if (travel) rows += '<tr><td>Travel / call-out</td><td>' + money(travel) + '</td></tr>';
-    if (other) rows += '<tr><td>Other</td><td>' + money(other) + '</td></tr>';
+    if (other) rows += '<tr><td>'+esc(i.inspectionId?(i.notes||'Vehicle inspection'):'Other')+'</td><td>' + money(other) + '</td></tr>';
 
     return '<div class="inline-invoice">' +
       '<div class="inv-head">' +
@@ -1512,7 +1517,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       ((Number(i.travel || 0) || Number(i.other || 0)) ?
         '<table><tbody>' +
           (Number(i.travel || 0) ? '<tr><td>Travel / call-out</td><td>' + money(i.travel) + '</td></tr>' : '') +
-          (Number(i.other || 0) ? '<tr><td>Other</td><td>' + money(i.other) + '</td></tr>' : '') +
+          (Number(i.other || 0) ? '<tr><td>'+esc(i.inspectionId?(i.notes||'Vehicle inspection'):'Other')+'</td><td>' + money(i.other) + '</td></tr>' : '') +
         '</tbody></table>' : '') +
 
       '<div class="inv-total">Total: ' + money(i.total) + '</div>' +
@@ -1812,7 +1817,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         partsRows + '<tr class="parts-subtotal"><td colspan="4">Parts subtotal</td><td>' + money(partsSubtotal) + '</td></tr></tbody></table>' : '') +
       ((Number(i.travel || 0) || Number(i.other || 0)) ? '<table><tbody>' +
         (Number(i.travel || 0) ? '<tr><td>Travel / call-out</td><td>' + money(i.travel) + '</td></tr>' : '') +
-        (Number(i.other || 0) ? '<tr><td>Other</td><td>' + money(i.other) + '</td></tr>' : '') + '</tbody></table>' : '') +
+        (Number(i.other || 0) ? '<tr><td>'+esc(i.inspectionId?(i.notes||'Vehicle inspection'):'Other')+'</td><td>' + money(i.other) + '</td></tr>' : '') + '</tbody></table>' : '') +
       '<div class="inv-total">Total: ' + money(i.total) + '</div></div>';
   }
 
@@ -2060,7 +2065,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       ensure(20); text(left, y, 10, 'Travel / call-out', false); rightText(y, 10, money(i.travel), false); y -= 17;
     }
     if (Number(i.other || 0)) {
-      ensure(20); text(left, y, 10, 'Other', false); rightText(y, 10, money(i.other), false); y -= 17;
+      ensure(20); text(left, y, 10, i.inspectionId?'Vehicle inspection / history check':'Other', false); rightText(y, 10, money(i.other), false); y -= 17;
     }
 
     if (!i.paid) {
@@ -2487,7 +2492,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     }
     if (Number(i.other || 0)) {
       ensure(20);
-      text(left, y, 10, 'Other', false);
+      text(left, y, 10, i.inspectionId?'Vehicle inspection / history check':'Other', false);
       rightText(y, 10, money(i.other), false);
       y -= 17;
     }
@@ -2656,14 +2661,14 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     return {
       fp:dataFingerprintV415(d),
       jobs:jobs.length, customers:(d.customers||[]).length, parts:(d.parts||[]).length,
-      invoices:(d.invoices||[]).length, quotes:(d.quotes||[]).length,
+      invoices:(d.invoices||[]).length, quotes:(d.quotes||[]).length, inspections:(d.inspections||[]).length,
       latest:latest?String(latest.title||latest.id||'Untitled'):'—',
       logo:hash64V415(String((d.settings||{}).companyLogo||'')).slice(0,10)
     };
   }
   function summaryTextV415(label,value){
     var s=dataSummaryV415(value);
-    return label+': '+s.fp+' | Jobs '+s.jobs+' | Latest '+s.latest+' | Logo '+s.logo;
+    return label+': '+s.fp+' | Jobs '+s.jobs+' | Inspections '+s.inspections+' | Latest '+s.latest+' | Logo '+s.logo;
   }
   function localFingerprintV414(){ return dataFingerprintV415(db); }
   function cloudFingerprintV414(row){ return row ? dataFingerprintV415(row.data||{}) : '----------------'; }
@@ -2810,6 +2815,7 @@ window.cloudCancelRecoveryV4310=function(){
     raw.parts = Array.isArray(raw.parts) ? raw.parts : [];
     raw.invoices = Array.isArray(raw.invoices) ? raw.invoices : [];
     raw.quotes = Array.isArray(raw.quotes) ? raw.quotes : [];
+    raw.inspections = Array.isArray(raw.inspections) ? raw.inspections : [];
     raw.settings = raw.settings && typeof raw.settings === 'object' ? raw.settings : {};
     if(raw.settings.hourlyRate == null) raw.settings.hourlyRate = 45;
     if(raw.settings.companyName == null) raw.settings.companyName = '';
@@ -2826,6 +2832,7 @@ window.cloudCancelRecoveryV4310=function(){
       (db.parts && db.parts.length) ||
       (db.invoices && db.invoices.length) ||
       (db.quotes && db.quotes.length) ||
+      (db.inspections && db.inspections.length) ||
       (db.settings && (db.settings.companyName || db.settings.companyLogo || db.settings.companyPhone || db.settings.companyEmail))
     );
   }
@@ -3411,6 +3418,16 @@ window.cloudCancelRecoveryV4310=function(){
 
   window.photoStorageSignedInV432=function(){ return !!cloudSession; };
   window.photoStorageUploadV432=uploadPhotoDataV43;
+  // Reuse the authenticated private bucket and user-folder policies for inspection evidence.
+  window.inspectionStorageUpload=async function(inspectionId,media){
+    var uid=getUserId();if(!uid)throw new Error('Sign in to Cloud Sync first.');
+    var blob=dataUrlToBlobV43(media.data);
+    var path=uid+'/inspection-'+inspectionId+'/'+media.id+(blob.type==='application/pdf'?'.pdf':'.jpg');
+    await storageRequestV43('/storage/v1/object/'+PHOTO_BUCKET_V43+'/'+path.split('/').map(encodeURIComponent).join('/'),{
+      method:'POST',headers:{'Content-Type':blob.type,'x-upsert':'false'},body:blob
+    });
+    var clean=Object.assign({},media,{storagePath:path,storageBucket:PHOTO_BUCKET_V43});delete clean.data;return clean;
+  };
   window.photoStorageDeleteV432=deleteStoredPhotoV43;
   window.photoStorageUrlV432=photoUrlV43;
 
@@ -4115,7 +4132,7 @@ window.cloudCancelRecoveryV4310=function(){
     return {name:billed.name||i.customer||c.name||'',phone:billed.phone||c.phone||'',email:billed.email||i.email||c.email||'',address:billed.address||c.address||''};
   }
   function v27Vehicle(i){
-    var j=(db.jobs||[]).find(function(x){return x.id===i.jobId;})||{},snap=i.deletedJobSnapshot||{},c=(db.customers||[]).find(function(x){return x.name===i.customer;})||{};
+    var j=(db.jobs||[]).find(function(x){return x.id===i.jobId;})||{},snap=i.deletedJobSnapshot||i.vehicle||{},c=(db.customers||[]).find(function(x){return x.name===i.customer;})||{};
     return {reg:j.reg||snap.reg||c.reg||c.vehicle||'',make:j.make||snap.make||c.make||'',model:j.model||snap.model||c.model||'',engineSize:j.engineSize||snap.engineSize||c.engineSize||'',title:j.title||snap.title||''};
   }
 
@@ -4145,7 +4162,7 @@ window.cloudCancelRecoveryV4310=function(){
       '<div class="bill-box"><b>VEHICLE / JOB</b><br>'+(vehicle.reg?'Registration: '+esc(vehicle.reg)+'<br>':'')+(vb?vb+'<br>':'')+(vehicle.title?'Job: '+esc(vehicle.title):'')+'</div></div>' +
       (Number(i.labour||0)?'<table><tbody><tr><td><b>Labour</b>'+(i.hours?' — '+esc(i.hours)+' hours @ '+money(db.settings.hourlyRate||0)+'/hr':'')+'</td><td style="text-align:right"><b>'+money(i.labour)+'</b></td></tr></tbody></table>':'') +
       (rows?'<div style="margin-top:18px;font-weight:900">PARTS USED</div><table class="parts-table parts-table-v20"><thead><tr><th>Part</th><th>Part No.</th><th>Qty</th><th>Each</th><th>Total</th></tr></thead><tbody>'+rows+'<tr class="parts-subtotal"><td colspan="4">Parts subtotal</td><td>'+money(partsSubtotal)+'</td></tr></tbody></table>':'') +
-      ((Number(i.travel||0)||Number(i.other||0))?'<table><tbody>'+(Number(i.travel||0)?'<tr><td>Travel / call-out</td><td>'+money(i.travel)+'</td></tr>':'')+(Number(i.other||0)?'<tr><td>Other</td><td>'+money(i.other)+'</td></tr>':'')+'</tbody></table>':'') +
+      ((Number(i.travel||0)||Number(i.other||0))?'<table><tbody>'+(Number(i.travel||0)?'<tr><td>Travel / call-out</td><td>'+money(i.travel)+'</td></tr>':'')+(Number(i.other||0)?'<tr><td>'+esc(i.inspectionId?(i.notes||'Vehicle inspection'):'Other')+'</td><td>'+money(i.other)+'</td></tr>':'')+'</tbody></table>':'') +
       '<div class="inv-total">Total: '+money(i.total)+'</div></div>';
   }
 
@@ -5297,4 +5314,7 @@ window.cloudCancelRecoveryV4310=function(){
 })();
 </script>
 
+<script src="./vendor/jspdf.umd.min.js"></script>
+<script src="./inspection-template.js"></script>
+<script src="./inspections.js"></script>
 </body></html>
