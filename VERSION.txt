@@ -1,2 +1,2 @@
-Mechanic Mate v44.0 - Standalone Vehicle Inspections
-Based on repository v43.10. Adds configurable 172-point checklists, evidence, autosave, history, PDFs, optional invoices and manual history-check attachments.
+Mechanic Mate v44.1
+Compact sidebar, live clock, DD-MM-YYYY dates, Jobs deletion and past booking styling, 156-check inspection default, and three-way conditional cloud sync.

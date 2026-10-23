@@ -1,0 +1,45 @@
+/* App presentation and the single sync scheduler. No navigation records are rewritten. */
+(()=>{
+ 'use strict';
+ const transport=window.mmCloudTransport;
+ const top=document.querySelector('.topbar'),nav=document.getElementById('nav');
+ document.body.classList.add('workshop');
+ const brand=document.createElement('div');brand.id='workshopBrand';brand.innerHTML='<span aria-hidden="true">🔧</span><span>Mechanic Mate</span>';document.body.insertBefore(brand,top);
+ const clock=document.createElement('div');clock.id='workshopClock';clock.innerHTML='<time id="workshopTime"></time><div id="workshopDate"></div>';top.appendChild(clock);
+ const syncButton=document.createElement('button');syncButton.id='workshopSync';syncButton.type='button';syncButton.onclick=()=>window.mmSync.conflicts.length?window.mmReviewConflicts():window.mmSync.run();top.appendChild(syncButton);
+ let syncState='Saved on device',syncDetail='',lastDay=MMDate.today();
+ function tick(){const d=new Date();document.getElementById('workshopTime').textContent=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(d);document.getElementById('workshopDate').textContent=MMDate.format(MMDate.today())+' · '+new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',weekday:'long'}).format(d);if(lastDay!==MMDate.today()){lastDay=MMDate.today();if(!editing())render();}}
+ tick();setInterval(tick,1000);
+ function editing(){const modal=document.getElementById('modal');return !!(modal?.innerHTML.trim()||window.MMInspections?.busy||document.activeElement?.matches('input,select,textarea,[contenteditable=true]'));}
+ function journal(){let promise;return ()=>promise||(promise=new Promise((resolve,reject)=>{const request=indexedDB.open('mechanic-mate-sync-v2',1);request.onupgradeneeded=()=>request.result.createObjectStore('ancestors');request.onerror=()=>reject(Error('Device sync storage is unavailable. Enable browser storage before syncing.'));request.onsuccess=()=>resolve(request.result);request.onblocked=()=>reject(Error('Close older Mechanic Mate tabs to open sync storage.'));}));}
+ const openJournal=journal();
+ async function readBase(uid){const store=await openJournal();return new Promise((resolve,reject)=>{const tx=store.transaction('ancestors','readonly'),r=tx.objectStore('ancestors').get(uid);r.onsuccess=()=>resolve(r.result||null);r.onerror=()=>reject(r.error);});}
+ async function saveBase(uid,value){const store=await openJournal();return new Promise((resolve,reject)=>{const tx=store.transaction('ancestors','readwrite');tx.objectStore('ancestors').put(value,uid);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(Error('Could not save sync checkpoint: '+tx.error));tx.onabort=()=>reject(Error('Sync checkpoint could not be saved.'));});}
+ function refreshSyncUI(){const engine=window.mmSync;syncButton.textContent=syncState==='Synced'?'✓ Synced · '+new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(engine.lastVerified)):syncState;syncButton.dataset.state=/failed|Review/.test(syncState)?'attention':syncState==='Synced'?'synced':'pending';syncButton.title=syncDetail||'Check and sync both copies';const panel=document.getElementById('workshopSyncStatus');if(panel){panel.textContent=syncState+(syncState==='Synced'?' · '+MMDate.stamp(engine.lastVerified):syncDetail?' — '+syncDetail:'');}const badge=document.getElementById('cloudBadge');if(badge)badge.hidden=true;}
+ window.mmUpdateSyncUI=refreshSyncUI;
+ const engine=new MMSyncCore.Engine({
+   online:()=>navigator.onLine,account:()=>transport.account(),loadBase:readBase,saveBase:async(uid,value)=>{await saveBase(uid,value);transport.acknowledged(value.revision);},
+   read:()=>transport.read(),write:(data,revision)=>transport.write(data,revision),get:()=>transport.get(),editing,
+   install:async data=>{transport.install(data);if(!editing())render();},
+   status:(status,detail)=>{syncState=status;syncDetail=status==='Synced'?MMDate.stamp(detail):detail;transport.status(status,syncDetail);refreshSyncUI();},
+   conflicts:()=>refreshSyncUI()
+ });
+ window.mmSync=engine;
+ function summary(value,deleted){if(deleted)return 'Deleted';if(value===undefined)return 'Not set';if(value===null)return 'Empty';if(typeof value==='object'){if(value.name||value.title||value.number)return String(value.name||value.title||value.number);if(Array.isArray(value))return value.length+' items';return 'Record details changed';}const text=String(value);return text.startsWith('data:')?'Attachment changed':text.length>200?text.slice(0,200)+'…':text;}
+ function conflictLabel(c){const names={jobs:'Job',customers:'Customer',parts:'Part',invoices:'Invoice',quotes:'Quote',inspections:'Inspection',settings:'Business settings'};const collection=c.path[0],record=Array.isArray(db[collection])?db[collection].find(x=>x.id===c.path[1]):null;return [names[collection]||collection,record?.title||record?.name||record?.number||record?.reg,c.path.slice(Array.isArray(db[collection])?2:1).join(' / ')].filter(Boolean).join(' · ');}
+ window.mmReviewConflicts=function(){const conflicts=engine.conflicts;if(!conflicts.length){alert('No overlapping changes are waiting for review. Sync checks run automatically.');return;}openModal('Choose overlapping changes','<p>These fields changed differently on the two copies. Other independent changes will merge automatically.</p>'+conflicts.map((c,index)=>'<div class="sync-conflict"><b>'+esc(conflictLabel(c))+'</b><label><input type="radio" name="conflict-'+index+'" value="device"> This device: '+esc(summary(c.device,c.deviceDeleted))+'</label><label><input type="radio" name="conflict-'+index+'" value="cloud"> Cloud: '+esc(summary(c.cloud,c.cloudDeleted))+'</label></div>').join('')+'<button class="primary" id="applySyncChoices">Apply choices and sync</button>');document.getElementById('applySyncChoices').onclick=async()=>{const choices={};for(let n=0;n<conflicts.length;n++){const choice=document.querySelector('input[name="conflict-'+n+'"]:checked');if(!choice){alert('Choose a version for every field.');return;}choices[conflicts[n].key]=choice.value;}try{closeM();await engine.resolve(choices);}catch(e){alert(e.message);}};};
+ // Date inputs present the requested format but existing save routines receive validated ISO dates.
+ const dateIds=['jd','jbooked','ivd','ivpaydate','qdate'];
+ const oldOpen=openModal;window.openModal=function(...args){oldOpen(...args);for(const id of dateIds){const input=document.getElementById(id);if(input){input.value=MMDate.format(input.value);input.placeholder='DD-MM-YYYY';input.inputMode='numeric';}}};
+ function saveDates(fn,ids){return function(...args){const inputs=ids.map(id=>document.getElementById(id)).filter(Boolean),values=[];for(const input of inputs){const parsed=MMDate.iso(input.value);if(parsed===null||(!parsed&&!['jbooked','ivpaydate'].includes(input.id))){alert('Enter a valid '+(input.id==='ivpaydate'?'payment date':'date')+' as DD-MM-YYYY.');input.focus();return;}values.push(parsed);}inputs.forEach((input,n)=>input.value=values[n]);const restore=()=>inputs.forEach(input=>{if(input.isConnected)input.value=MMDate.format(input.value);});try{const result=fn(...args);if(result&&typeof result.then==='function')return result.finally(restore);restore();return result;}catch(e){restore();throw e;}};}
+ window.saveJob=saveDates(window.saveJob,['jd','jbooked']);window.saveInvoice=saveDates(window.saveInvoice,['ivd','ivpaydate']);window.saveQuote=saveDates(window.saveQuote,['qdate']);
+ const icons={Dashboard:'▦',Jobs:'⚒',Quotes:'▤',Customers:'♙',Parts:'▣',Invoices:'▧',Inspections:'✓',Settings:'⚙'};
+ function decorate(){for(const button of nav.querySelectorAll('button')){const label=button.dataset.label||button.textContent.trim();if(icons[label]){button.dataset.label=label;button.innerHTML='<span aria-hidden="true" class="nav-symbol">'+icons[label]+'</span><span>'+esc(label)+'</span>';button.setAttribute('aria-current',button.classList.contains('on')?'page':'false');}}if(page==='Settings'&&!transport.recovery()){const card=document.querySelector('.cloud-card');if(card&&!document.getElementById('workshopSyncStatus')){const p=document.createElement('p');p.id='workshopSyncStatus';p.setAttribute('role','status');card.insertBefore(p,card.children[1]||null);}}refreshSyncUI();}
+ const oldRender=window.render;window.render=function(){oldRender();decorate();};
+ const oldClose=window.closeM;window.closeM=function(){oldClose();engine.schedule(500);};
+ window.addEventListener('focus',()=>engine.schedule(250));window.addEventListener('online',()=>engine.schedule(0));window.addEventListener('offline',()=>engine.state('Offline — saved on device'));
+ document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')engine.schedule(200);});
+ document.addEventListener('focusout',()=>{if(!engine.conflicts.length)engine.schedule(700);});
+ setInterval(()=>{if(document.visibilityState==='visible')engine.schedule(0);},15000);
+ render();engine.schedule(0);
+})();

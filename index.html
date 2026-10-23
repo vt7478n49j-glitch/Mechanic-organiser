@@ -630,6 +630,8 @@ a{
 .recovery-message{white-space:pre-line;margin:12px 0;line-height:1.5}
 </style>
 <link rel="stylesheet" href="./inspections.css">
+<link rel="stylesheet" href="./workshop.css">
+<script src="./dates.js"></script>
 </head><body>
 <div class="topbar"><div class="brandtext"><h1>🔧 Mechanic Mate</h1><div class="sub">Private mobile mechanic job manager</div></div><img id="headerLogo" class="app-logo hidden" alt="Company logo"></div><div id="nav" class="nav"></div><main id="app"></main><div id="modal"></div><div id="bookingPickerHost"></div>
 <script>
@@ -751,19 +753,19 @@ const jobLabel=j=>`${j.title||'Untitled'}${j.reg?' • '+j.reg:''}${j.customer?'
 function go(p){page=p;render()}function renderHeader(){const img=document.getElementById('headerLogo');if(db.settings.companyLogo){img.src=db.settings.companyLogo;img.classList.remove('hidden')}else{img.removeAttribute('src');img.classList.add('hidden')}}function render(){renderHeader();nav.innerHTML=['Dashboard','Jobs','Customers','Parts','Invoices','Settings'].map(x=>`<button class="${page===x?'on':''}" onclick="go('${x}')">${x}</button>`).join('');app.innerHTML=({Dashboard:dash,Jobs:jobs,Customers:customers,Parts:parts,Invoices:invoices,Settings:settings}[page])()}
 function dash(){const rev=db.invoices.reduce((a,x)=>a+Number(x.total||0),0),cost=db.parts.reduce((a,x)=>a+Number(x.cost||0),0);return `<div class="grid"><div class="card stat">Jobs<b>${db.jobs.length}</b></div><div class="card stat">Customers<b>${db.customers.length}</b></div><div class="card stat">Invoiced<b>${money(rev)}</b></div><div class="card stat">Profit*<b>${money(rev-cost)}</b></div></div><div class="actions"><button class="primary" onclick="jobForm()">＋ New Job</button><button onclick="invoiceForm()">＋ Invoice</button></div><div class="card"><b>Recent jobs</b>${db.jobs.slice().reverse().slice(0,5).map(jobCard).join('')||'<div class="empty">No jobs yet.</div>'}</div><p class="muted">*Invoices minus recorded parts costs.</p>`}
 function linkedParts(j){return (j.partIds||[]).map(id=>db.parts.find(p=>p.id===id)).filter(Boolean)}
-function jobCard(j){const ps=linkedParts(j),lab=Number(j.hours||0)*Number(db.settings.hourlyRate||0);return `<div class="card"><div class="row"><b>${esc(j.title||'Untitled job')}</b><span class="pill">${esc(j.status||'Open')}</span></div><div class="muted">${esc(j.customer||'No customer')} • ${esc(j.reg||'No reg')} • ${esc(j.date||'')}</div>${j.hours?`<div class="muted">${esc(j.hours)}h labour = ${money(lab)}</div>`:''}${ps.length?`<div class="muted">${ps.length} linked part${ps.length===1?'':'s'}</div>`:''}<div class="actions"><button onclick="jobForm('${j.id}')">Open</button><button class="primary" onclick="jobPartsMenu('${j.id}')">＋ Add / Select Parts</button><button onclick="invoiceForm('${j.id}')">Invoice</button></div></div>`}
+function jobCard(j){const ps=linkedParts(j),lab=Number(j.hours||0)*Number(db.settings.hourlyRate||0);return `<div class="card"><div class="row"><b>${esc(j.title||'Untitled job')}</b><span class="pill">${esc(j.status||'Open')}</span></div><div class="muted">${esc(j.customer||'No customer')} • ${esc(j.reg||'No reg')} • ${esc(MMDate.format(j.date||''))}</div>${j.hours?`<div class="muted">${esc(j.hours)}h labour = ${money(lab)}</div>`:''}${ps.length?`<div class="muted">${ps.length} linked part${ps.length===1?'':'s'}</div>`:''}<div class="actions"><button onclick="jobForm('${j.id}')">Open</button><button class="primary" onclick="jobPartsMenu('${j.id}')">＋ Add / Select Parts</button><button onclick="invoiceForm('${j.id}')">Invoice</button></div></div>`}
 function jobs(){return `<div class="row"><h2>Jobs</h2><button class="primary" onclick="jobForm()">＋ New</button></div>${db.jobs.slice().reverse().map(jobCard).join('')||'<div class="empty">No jobs.</div>'}`}
 function customers(){return `<div class="row"><h2>Customers</h2><button class="primary" onclick="customerForm()">＋ Add</button></div>${db.customers.map(c=>`<div class="card"><b>${esc(c.name)}</b><div class="muted">${esc(c.phone)}${c.email?'<br>'+esc(c.email):''}<br>${esc(c.vehicle)}<br>${esc(c.address)}</div><div class="actions"><button onclick="customerForm('${c.id}')">Edit</button><button class="danger" onclick="del('customers','${c.id}')">Delete</button></div></div>`).join('')||'<div class="empty">No customers.</div>'}`}
 function partJobs(p){return db.jobs.filter(j=>(j.partIds||[]).includes(p.id))}
 function parts(){return `<div class="row"><h2>Parts</h2><button class="primary" onclick="partForm()">＋ Add</button></div>${db.parts.slice().reverse().map(p=>{const js=partJobs(p);return `<div class="card"><div class="row"><b>${esc(p.name)}</b><span class="price">${money(p.charge||p.cost)}</span></div><div class="muted">Cost ${money(p.cost)}${p.supplier?' • '+esc(p.supplier):''}</div><div class="muted">${js.length?'Used on: '+js.map(j=>esc(j.title||j.reg||'Job')).join(', '):'Not linked to a job'}</div><div class="actions"><button onclick="partForm('${p.id}')">Edit</button><button class="danger" onclick="deletePart('${p.id}')">Delete</button></div></div>`}).join('')||'<div class="empty">No parts.</div>'}`}
-function invoices(){return `<div class="row"><h2>Invoices</h2><button class="primary" onclick="invoiceForm()">＋ New</button></div>${db.invoices.slice().reverse().map(i=>`<div class="card"><div class="row"><b>${esc(i.number)}</b><b>${money(i.total)}</b></div><div class="muted">${esc(i.customer)} • ${esc(i.date)}${i.jobId?' • linked job':''}</div><p>${i.paid?'✅ PAID':'⚠️ UNPAID'}</p><div class="actions"><button class="primary" onclick="viewInvoice('${i.id}',this)">View Invoice</button><button onclick="printShareInvoice('${i.id}')">Print / Share</button><button onclick="emailInvoice('${i.id}')">Email PDF</button><button onclick="paid('${i.id}')">Mark ${i.paid?'unpaid':'paid'}</button><button class="danger" onclick="del('invoices','${i.id}')">Delete</button></div></div>`).join('')||'<div class="empty">No invoices.</div>'}`}
+function invoices(){return `<div class="row"><h2>Invoices</h2><button class="primary" onclick="invoiceForm()">＋ New</button></div>${db.invoices.slice().reverse().map(i=>`<div class="card"><div class="row"><b>${esc(i.number)}</b><b>${money(i.total)}</b></div><div class="muted">${esc(i.customer)} • ${esc(MMDate.format(i.date))}${i.jobId?' • linked job':''}</div><p>${i.paid?'✅ PAID':'⚠️ UNPAID'}</p><div class="actions"><button class="primary" onclick="viewInvoice('${i.id}',this)">View Invoice</button><button onclick="printShareInvoice('${i.id}')">Print / Share</button><button onclick="emailInvoice('${i.id}')">Email PDF</button><button onclick="paid('${i.id}')">Mark ${i.paid?'unpaid':'paid'}</button><button class="danger" onclick="del('invoices','${i.id}')">Delete</button></div></div>`).join('')||'<div class="empty">No invoices.</div>'}`}
 function settings(){return `<h2>Settings</h2><div class="card"><b>Business details</b><p class="muted">These details appear on your invoices and the logo also appears in the app header.</p><label>Company name</label><input id="companyName" value="${esc(db.settings.companyName||'')}" placeholder="e.g. Roadside Auto Solutions"><label>Company logo</label>${db.settings.companyLogo?`<div style="margin:8px 0"><img class="logo-preview" src="${db.settings.companyLogo}" alt="Logo preview"></div>`:'<div class="muted" style="margin:8px 0">No logo uploaded yet.</div>'}<input id="logoUpload" type="file" accept="image/*" onchange="handleLogoUpload(event)"><div class="actions"><button class="primary" onclick="saveBusinessSettings()">Save business details</button>${db.settings.companyLogo?'<button class="danger" onclick="removeLogo()">Remove logo</button>':''}</div></div><div class="card"><b>Labour rate</b><p class="muted">Used automatically when you enter hours on a job.</p><label>Hourly charge (£)</label><input id="rate" type="number" min="0" step="0.01" value="${Number(db.settings.hourlyRate||0)}"><button class="primary" onclick="db.settings.hourlyRate=Number(rate.value||0);save();alert('Hourly rate saved')">Save rate</button></div><div class="card"><b>Backup</b><p class="muted">Export your data regularly. Your uploaded logo is included in the backup.</p><button class="primary" onclick="exportData()">Export backup</button> <button onclick="imp.click()">Import</button><input id="imp" type="file" accept=".json" style="display:none" onchange="importData(event)"></div><div class="card"><b>Reset</b><p class="muted">Delete everything stored on this device.</p><button class="danger" onclick="resetData()">Delete all data</button></div>`}
 function handleLogoUpload(e){const f=e.target.files&&e.target.files[0];if(!f)return;if(f.size>3*1024*1024){alert('Please use a logo under 3 MB.');e.target.value='';return}const r=new FileReader();r.onload=()=>{db.settings.companyLogo=r.result;save();render();alert('Logo saved')};r.readAsDataURL(f)}
 function saveBusinessSettings(){db.settings.companyName=companyName.value.trim();save();render();alert('Business details saved')}
 function removeLogo(){if(confirm('Remove the saved company logo?')){db.settings.companyLogo='';save();render()}}
 function openModal(title,body){modal.innerHTML=`<div class="card"><div class="row"><h2>${title}</h2><button onclick="closeM()">✕</button></div>${body}</div>`}function closeM(){modal.innerHTML=''}
 function customerOptions(selected=''){return `<option value="">— Select customer —</option>`+db.customers.map(c=>`<option value="${esc(c.name)}" ${c.name===selected?'selected':''}>${esc(c.name)}${c.vehicle?' • '+esc(c.vehicle):''}</option>`).join('')}
-function jobForm(id){let j=db.jobs.find(x=>x.id===id)||{};const ps=linkedParts(j);openModal(id?'Edit Job':'New Job',`<label>Job title</label><input id="jt" value="${esc(j.title)}"><label>Customer</label><select id="jcsel" onchange="jcmanual.value=this.value">${customerOptions(j.customer||'')}</select><label>Customer name (or type manually)</label><input id="jcmanual" value="${esc(j.customer)}"><label>Registration</label><input id="jr" value="${esc(j.reg)}"><label>Date</label><input id="jd" class="date-safe" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="${j.date||new Date().toISOString().slice(0,10)}"><label>Status</label><select id="js"><option>Pending</option><option>Booked</option><option>In progress</option><option>Complete</option><option>Invoiced</option><option>Paid</option><option>Cancelled</option></select><label>Time spent on job (hours)</label><input id="jh" type="number" inputmode="decimal" min="0" step="0.25" value="${Number(j.hours||0)}" placeholder="e.g. 1.5"><div class="muted" style="margin-top:-6px;margin-bottom:10px">Labour is calculated automatically using your hourly rate in Settings.</div><label>Location</label><input id="jl" value="${esc(j.location)}"><label>Notes</label><textarea id="jn">${esc(j.notes)}</textarea>${id?`<div class="card"><div class="row"><b>Linked parts</b><button class="primary" onclick="jobPartsMenu('${id}')">＋ Add / Select Parts</button></div>${ps.map(p=>`<div class="partline row"><span>${esc(p.name)}</span><span>${money(p.charge||p.cost)}</span></div>`).join('')||'<div class="muted">No parts linked yet.</div>'}</div>`:''}<button class="primary" onclick="saveJob('${id||''}')">Save job</button>`);if(j.status)js.value=j.status}
+function jobForm(id){let j=db.jobs.find(x=>x.id===id)||{};const ps=linkedParts(j);openModal(id?'Edit Job':'New Job',`<label>Job title</label><input id="jt" value="${esc(j.title)}"><label>Customer</label><select id="jcsel" onchange="jcmanual.value=this.value">${customerOptions(j.customer||'')}</select><label>Customer name (or type manually)</label><input id="jcmanual" value="${esc(j.customer)}"><label>Registration</label><input id="jr" value="${esc(j.reg)}"><label>Date</label><input id="jd" class="date-safe" type="text" inputmode="numeric" placeholder="DD-MM-YYYY" value="${j.date||MMDate.today()}"><label>Status</label><select id="js"><option>Pending</option><option>Booked</option><option>In progress</option><option>Complete</option><option>Invoiced</option><option>Paid</option><option>Cancelled</option></select><label>Time spent on job (hours)</label><input id="jh" type="number" inputmode="decimal" min="0" step="0.25" value="${Number(j.hours||0)}" placeholder="e.g. 1.5"><div class="muted" style="margin-top:-6px;margin-bottom:10px">Labour is calculated automatically using your hourly rate in Settings.</div><label>Location</label><input id="jl" value="${esc(j.location)}"><label>Notes</label><textarea id="jn">${esc(j.notes)}</textarea>${id?`<div class="card"><div class="row"><b>Linked parts</b><button class="primary" onclick="jobPartsMenu('${id}')">＋ Add / Select Parts</button></div>${ps.map(p=>`<div class="partline row"><span>${esc(p.name)}</span><span>${money(p.charge||p.cost)}</span></div>`).join('')||'<div class="muted">No parts linked yet.</div>'}</div>`:''}<button class="primary" onclick="saveJob('${id||''}')">Save job</button>`);if(j.status)js.value=j.status}
 function saveJob(id){let old=db.jobs.find(y=>y.id===id)||{};let x={...old,id:id||gid(),title:jt.value,customer:jcmanual.value,reg:jr.value,date:jd.value,status:js.value,location:jl.value,notes:jn.value,hours:Number(jh.value||0),partIds:old.partIds||[]},i=db.jobs.findIndex(y=>y.id===x.id);i<0?db.jobs.push(x):db.jobs[i]=x;save();closeM();render()}
 function customerForm(id){let c=db.customers.find(x=>x.id===id)||{};openModal(id?'Edit Customer':'New Customer',`<label>Name</label><input id="cn" value="${esc(c.name)}"><label>Phone</label><input id="cp" value="${esc(c.phone)}"><label>Email</label><input id="ce" type="email" value="${esc(c.email||'')}"><label>Vehicle / Reg</label><input id="cv" value="${esc(c.vehicle)}"><label>Address</label><textarea id="ca">${esc(c.address)}</textarea><button class="primary" onclick="saveCustomer('${id||''}')">Save</button>`)}
 function saveCustomer(id){let x={id:id||gid(),name:cn.value,phone:cp.value,email:ce.value,vehicle:cv.value,address:ca.value},i=db.customers.findIndex(y=>y.id===x.id);i<0?db.customers.push(x):db.customers[i]=x;save();closeM();render()}
@@ -772,11 +774,11 @@ function savePart(id,linkJobId){const x={id:id||gid(),name:pn.value,cost:Number(
 function jobPartsMenu(jobId){const j=db.jobs.find(x=>x.id===jobId);if(!j)return;const linked=new Set(j.partIds||[]);openModal('Parts for this job',`<p class="muted">${esc(jobLabel(j))}</p><div class="card"><b>Select saved parts</b><p class="muted">Tick any parts from your Parts tab that were used on this job.</p>${db.parts.length?db.parts.map(p=>`<label style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line);font-size:14px;color:var(--text)"><input type="checkbox" class="jobPartCheck" value="${p.id}" ${linked.has(p.id)?'checked':''} style="width:22px;height:22px;margin:0;flex:0 0 auto"><span style="flex:1"><b>${esc(p.name)}</b><br><span class="muted">Charge ${money(p.charge||p.cost)} • Cost ${money(p.cost)}</span></span></label>`).join(''):'<div class="empty">You have no saved parts yet.</div>'}<button class="primary" style="width:100%;margin-top:10px" onclick="saveJobPartSelection('${jobId}')">Save selected parts</button></div><button style="width:100%;margin-top:10px" onclick="partForm('','${jobId}')">＋ Add a new part manually</button><p class="muted">A manually added part is saved in the Parts tab and linked to this job automatically.</p>`)}
 function saveJobPartSelection(jobId){const j=db.jobs.find(x=>x.id===jobId);if(!j)return;j.partIds=[...document.querySelectorAll('.jobPartCheck:checked')].map(x=>x.value);save();closeM();render()}
 function deletePart(id){if(!confirm('Delete this part? It will also be unlinked from any jobs.'))return;db.jobs.forEach(j=>j.partIds=(j.partIds||[]).filter(x=>x!==id));db.parts=db.parts.filter(x=>x.id!==id);save();render()}
-function invoiceForm(jobId=''){const j=db.jobs.find(x=>x.id===jobId)||null;const partsTotal=j?linkedParts(j).reduce((a,p)=>a+Number(p.charge||p.cost||0),0):0;const hours=j?Number(j.hours||0):0;const rate=Number(db.settings.hourlyRate||0);const labour=hours*rate;const jobsOpt=`<option value="">— No linked job —</option>`+db.jobs.slice().reverse().map(x=>`<option value="${x.id}" ${x.id===jobId?'selected':''}>${esc(jobLabel(x))}</option>`).join('');openModal('New Invoice',`<label>Recent job</label><select id="ivjob" onchange="fillInvoiceFromJob()">${jobsOpt}</select><label>Customer</label><select id="ivcustsel" onchange="ivc.value=this.value;fillCustomerEmail(this.value)">${customerOptions(j?.customer||'')}</select><label>Customer name</label><input id="ivc" value="${esc(j?.customer||'')}"><label>Customer email</label><input id="ive" type="email" value="${esc((db.customers.find(c=>c.name===(j?.customer||''))||{}).email||'')}"><label>Invoice number</label><input id="ivn" value="INV-${String(db.invoices.length+1).padStart(4,'0')}"><label>Date</label><input id="ivd" class="date-safe" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="${new Date().toISOString().slice(0,10)}"><label>Time spent on job (hours)</label><input id="ivhours" type="number" inputmode="decimal" min="0" step="0.25" value="${hours}" oninput="recalcInvoiceLabour()" placeholder="e.g. 1.5"><div class="muted" style="margin-top:-6px;margin-bottom:10px">Hourly rate: ${money(rate)} / hour. Labour is calculated automatically.</div><label>Labour (£) — calculated automatically</label><input id="ivl" type="number" step="0.01" value="${labour.toFixed(2)}" readonly style="opacity:.8"><label>Parts (£) — from linked parts</label><input id="ivp" type="number" step="0.01" value="${partsTotal.toFixed(2)}" readonly style="opacity:.8"><label>Travel / call-out (£)</label><input id="ivt" type="number" step="0.01" value="0"><label>Other (£)</label><input id="ivo" type="number" step="0.01" value="0"><button class="primary" onclick="saveInvoice()">Save invoice</button>`) }
+function invoiceForm(jobId=''){const j=db.jobs.find(x=>x.id===jobId)||null;const partsTotal=j?linkedParts(j).reduce((a,p)=>a+Number(p.charge||p.cost||0),0):0;const hours=j?Number(j.hours||0):0;const rate=Number(db.settings.hourlyRate||0);const labour=hours*rate;const jobsOpt=`<option value="">— No linked job —</option>`+db.jobs.slice().reverse().map(x=>`<option value="${x.id}" ${x.id===jobId?'selected':''}>${esc(jobLabel(x))}</option>`).join('');openModal('New Invoice',`<label>Recent job</label><select id="ivjob" onchange="fillInvoiceFromJob()">${jobsOpt}</select><label>Customer</label><select id="ivcustsel" onchange="ivc.value=this.value;fillCustomerEmail(this.value)">${customerOptions(j?.customer||'')}</select><label>Customer name</label><input id="ivc" value="${esc(j?.customer||'')}"><label>Customer email</label><input id="ive" type="email" value="${esc((db.customers.find(c=>c.name===(j?.customer||''))||{}).email||'')}"><label>Invoice number</label><input id="ivn" value="INV-${String(db.invoices.length+1).padStart(4,'0')}"><label>Date</label><input id="ivd" class="date-safe" type="text" inputmode="numeric" placeholder="DD-MM-YYYY" value="${MMDate.today()}"><label>Time spent on job (hours)</label><input id="ivhours" type="number" inputmode="decimal" min="0" step="0.25" value="${hours}" oninput="recalcInvoiceLabour()" placeholder="e.g. 1.5"><div class="muted" style="margin-top:-6px;margin-bottom:10px">Hourly rate: ${money(rate)} / hour. Labour is calculated automatically.</div><label>Labour (£) — calculated automatically</label><input id="ivl" type="number" step="0.01" value="${labour.toFixed(2)}" readonly style="opacity:.8"><label>Parts (£) — from linked parts</label><input id="ivp" type="number" step="0.01" value="${partsTotal.toFixed(2)}" readonly style="opacity:.8"><label>Travel / call-out (£)</label><input id="ivt" type="number" step="0.01" value="0"><label>Other (£)</label><input id="ivo" type="number" step="0.01" value="0"><button class="primary" onclick="saveInvoice()">Save invoice</button>`) }
 function recalcInvoiceLabour(){const rate=Number(db.settings.hourlyRate||0);if(document.getElementById('ivl'))ivl.value=(Number(ivhours.value||0)*rate).toFixed(2)}
 function fillInvoiceFromJob(){const j=db.jobs.find(x=>x.id===ivjob.value);if(!j){ivhours.value=0;ivl.value='0.00';ivp.value='0.00';return}ivc.value=j.customer||'';if(document.getElementById('ivcustsel'))ivcustsel.value=j.customer||'';fillCustomerEmail(j.customer||'');ivhours.value=Number(j.hours||0);recalcInvoiceLabour();ivp.value=linkedParts(j).reduce((a,p)=>a+Number(p.charge||p.cost||0),0).toFixed(2)}
 function fillCustomerEmail(name){const c=db.customers.find(x=>x.name===name);if(document.getElementById('ive'))ive.value=c?.email||''}
-function invoiceMarkup(i){const j=invoiceJob(i);const company=esc(db.settings.companyName||'Mechanic Mate');const logo=db.settings.companyLogo?`<img src="${db.settings.companyLogo}" style="max-width:120px;max-height:80px;object-fit:contain">`:'';const reg=j?.reg||'';const title=j?.title||'';const status=i.paid?'PAID':'DUE';return `<div class="invoice-sheet"><div class="invoice-head"><div>${logo}<div class="invoice-company">${company}</div></div><div><div class="invoice-title">INVOICE</div><div class="muted">${esc(i.number)}</div><div class="invoice-badge">${status}</div></div></div><div class="invoice-meta"><div class="invoice-box"><b>Bill to</b><div>${esc(i.customer||'')}</div>${i.email?`<div class="muted">${esc(i.email)}</div>`:''}</div><div class="invoice-box"><b>Invoice details</b><div>Date: ${esc(i.date||'')}</div>${title?`<div>Job: ${esc(title)}</div>`:''}${reg?`<div>Registration: ${esc(reg)}</div>`:''}</div></div><table class="invoice-table"><thead><tr><th>Description</th><th>Amount</th></tr></thead><tbody>${Number(i.labour||0)?`<tr><td>Labour${i.hours?` (${esc(i.hours)}h @ ${money(db.settings.hourlyRate||0)}/hr)`:''}</td><td>${money(i.labour)}</td></tr>`:''}${Number(i.parts||0)?`<tr><td>Parts</td><td>${money(i.parts)}</td></tr>`:''}${Number(i.travel||0)?`<tr><td>Travel / call-out</td><td>${money(i.travel)}</td></tr>`:''}${Number(i.other||0)?`<tr><td>Other</td><td>${money(i.other)}</td></tr>`:''}<tr class="invoice-total"><td>Total</td><td>${money(i.total)}</td></tr></tbody></table></div>`}
+function invoiceMarkup(i){const j=invoiceJob(i);const company=esc(db.settings.companyName||'Mechanic Mate');const logo=db.settings.companyLogo?`<img src="${db.settings.companyLogo}" style="max-width:120px;max-height:80px;object-fit:contain">`:'';const reg=j?.reg||'';const title=j?.title||'';const status=i.paid?'PAID':'DUE';return `<div class="invoice-sheet"><div class="invoice-head"><div>${logo}<div class="invoice-company">${company}</div></div><div><div class="invoice-title">INVOICE</div><div class="muted">${esc(i.number)}</div><div class="invoice-badge">${status}</div></div></div><div class="invoice-meta"><div class="invoice-box"><b>Bill to</b><div>${esc(i.customer||'')}</div>${i.email?`<div class="muted">${esc(i.email)}</div>`:''}</div><div class="invoice-box"><b>Invoice details</b><div>Date: ${esc(MMDate.format(i.date||''))}</div>${title?`<div>Job: ${esc(title)}</div>`:''}${reg?`<div>Registration: ${esc(reg)}</div>`:''}</div></div><table class="invoice-table"><thead><tr><th>Description</th><th>Amount</th></tr></thead><tbody>${Number(i.labour||0)?`<tr><td>Labour${i.hours?` (${esc(i.hours)}h @ ${money(db.settings.hourlyRate||0)}/hr)`:''}</td><td>${money(i.labour)}</td></tr>`:''}${Number(i.parts||0)?`<tr><td>Parts</td><td>${money(i.parts)}</td></tr>`:''}${Number(i.travel||0)?`<tr><td>Travel / call-out</td><td>${money(i.travel)}</td></tr>`:''}${Number(i.other||0)?`<tr><td>Other</td><td>${money(i.other)}</td></tr>`:''}<tr class="invoice-total"><td>Total</td><td>${money(i.total)}</td></tr></tbody></table></div>`}
 function closeInvoiceView(){page='Invoices';render();window.scrollTo(0,0)}
 function svgEsc(v){return String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&apos;'}[c]))}
 function invoiceSVG(i){
@@ -798,7 +800,7 @@ function invoiceSVG(i){
   <line x1="90" y1="320" x2="1150" y2="320" stroke="#15171a" stroke-width="3"/>
   <text x="90" y="375" class="head">BILL TO</text><text x="650" y="375" class="head">INVOICE DETAILS</text>
   <text x="90" y="425" class="body">${svgEsc(i.customer||'')}</text>${i.email?`<text x="90" y="465" class="small">${svgEsc(i.email)}</text>`:''}
-  <text x="650" y="425" class="body">Date: ${svgEsc(i.date||'')}</text>${title?`<text x="650" y="465" class="small">Job: ${svgEsc(title)}</text>`:''}${reg?`<text x="650" y="505" class="small">Registration: ${svgEsc(reg)}</text>`:''}
+  <text x="650" y="425" class="body">Date: ${svgEsc(MMDate.format(i.date||''))}</text>${title?`<text x="650" y="465" class="small">Job: ${svgEsc(title)}</text>`:''}${reg?`<text x="650" y="505" class="small">Registration: ${svgEsc(reg)}</text>`:''}
   <line x1="90" y1="620" x2="1150" y2="620" stroke="#d1d5db" stroke-width="2"/><text x="90" y="675" class="head">Description</text><text x="1150" y="675" class="head" text-anchor="end">Amount</text>
   ${rowSvg}
   <line x1="650" y1="${y+15}" x2="1150" y2="${y+15}" stroke="#15171a" stroke-width="3"/><text x="650" y="${y+75}" class="total">TOTAL</text><text x="1150" y="${y+75}" class="total" text-anchor="end">${svgEsc(money(i.total))}</text>
@@ -809,7 +811,7 @@ function invoiceImageBlob(i){return new Blob([invoiceSVG(i)],{type:'image/svg+xm
 function closeInvoiceView(){page='Invoices';render();window.scrollTo(0,0)}
 function viewInvoice(id){const i=db.invoices.find(x=>x.id===id);if(!i)return;page='Invoices';renderHeader();nav.innerHTML=['Dashboard','Jobs','Customers','Parts','Invoices','Settings'].map(x=>`<button class="${x==='Invoices'?'on':''}" onclick="go('${x}')">${x}</button>`).join('');app.innerHTML=`<div class="invoice-toolbar"><button onclick="closeInvoiceView()">← Back to invoices</button><button class="accent" onclick="printInvoice()">Print / Save PDF</button><button onclick="emailInvoice('${i.id}')">Email PDF</button></div>${invoiceMarkup(i)}`;window.scrollTo(0,0)}
 function printInvoice(){window.print()}
-function invoiceShareText(i){const j=invoiceJob(i);return `Invoice ${i.number}\n${db.settings.companyName||'Mechanic Mate'}\nCustomer: ${i.customer||''}${j?.reg?`\nRegistration: ${j.reg}`:''}\nTotal: ${money(i.total)}\nDate: ${i.date||''}`}
+function invoiceShareText(i){const j=invoiceJob(i);return `Invoice ${i.number}\n${db.settings.companyName||'Mechanic Mate'}\nCustomer: ${i.customer||''}${j?.reg?`\nRegistration: ${j.reg}`:''}\nTotal: ${money(i.total)}\nDate: ${MMDate.format(i.date||'')}`}
 async function shareInvoice(id){const i=db.invoices.find(x=>x.id===id);if(!i)return;const text=invoiceShareText(i);try{if(navigator.share){await navigator.share({title:`Invoice ${i.number}`,text});return}}catch(e){if(e&&e.name==='AbortError')return}openModal('Share invoice',`<p class="muted">Use <b>View Invoice → Print / Save PDF</b> to create the actual invoice PDF. You can then share that PDF from the iPhone print/share screen.</p><div class="actions"><button class="primary" onclick="closeM();viewInvoice('${i.id}')">View invoice</button><button onclick="emailInvoice('${i.id}')">Email details</button></div>`) }
 function saveInvoiceImage(id){const i=db.invoices.find(x=>x.id===id);if(!i)return;const blob=invoiceImageBlob(i),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${(i.number||'invoice').replace(/[^a-z0-9-_]/gi,'-')}.svg`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
 function emailInvoice(id){const i=db.invoices.find(x=>x.id===id);if(!i)return;const subject=encodeURIComponent(`Invoice ${i.number} - ${db.settings.companyName||'Mechanic Mate'}`),body=encodeURIComponent(invoiceShareText(i));location.href=`mailto:${encodeURIComponent(i.email||'')}?subject=${subject}&body=${body}`}
@@ -862,7 +864,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '</div>' +
         '<div style="text-align:right">' +
           '<div class="inv-title">INVOICE</div>' +
-          '<div class="inv-meta">' + esc(i.number || '') + '<br>' + esc(i.date || '') + '</div>' +
+          '<div class="inv-meta">' + esc(i.number || '') + '<br>' + esc(MMDate.format(i.date || '')) + '</div>' +
         '</div>' +
       '</div>' +
       '<div class="inv-meta">' +
@@ -970,7 +972,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     var body =
       company + '\n\n' +
       'Invoice: ' + (i.number || '') + '\n' +
-      'Date: ' + (i.date || '') + '\n' +
+      'Date: ' + MMDate.format(i.date || '') + '\n' +
       'Customer: ' + (i.customer || '') + '\n' +
       (j.reg ? 'Registration: ' + j.reg + '\n' : '') +
       'Total: ' + money(i.total || 0) + '\n' +
@@ -1137,7 +1139,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       '<div class="vehicle-grid"><div><label>Make</label><input id="jmake" value="' + esc(j.make || '') + '"></div>' +
       '<div><label>Model</label><input id="jmodel" value="' + esc(j.model || '') + '"></div></div>' +
       '<label>Engine size / engine</label><input id="jengine" value="' + esc(j.engineSize || '') + '">' +
-      '<label>Date</label><input id="jd" class="date-safe" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="' + esc(j.date || new Date().toISOString().slice(0,10)) + '">' +
+      '<label>Date</label><input id="jd" class="date-safe" type="text" inputmode="numeric" placeholder="DD-MM-YYYY" value="' + esc(j.date || MMDate.today()) + '">' +
       '<label>Status</label><select id="js"><option>Pending</option><option>Booked</option><option>In progress</option><option>Complete</option><option>Invoiced</option><option>Paid</option><option>Cancelled</option></select>' +
       '<label>Time spent on job (hours)</label><input id="jh" type="number" inputmode="decimal" min="0" step="0.25" value="' + Number(j.hours || 0) + '" placeholder="e.g. 1.5">' +
       '<div class="muted" style="margin-top:-6px;margin-bottom:10px">Labour is calculated automatically using your hourly rate in Settings.</div>' +
@@ -1345,7 +1347,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       '<label>Customer name</label><input id="ivc" value="' + esc(j && j.customer || '') + '">' +
       '<label>Customer email</label><input id="ive" type="email" value="' + esc(c.email || '') + '">' +
       '<label>Invoice number</label><input id="ivn" value="INV-' + String(db.invoices.length + 1).padStart(4,'0') + '">' +
-      '<label>Date</label><input id="ivd" class="date-safe" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="' + new Date().toISOString().slice(0,10) + '">' +
+      '<label>Date</label><input id="ivd" class="date-safe" type="text" inputmode="numeric" placeholder="DD-MM-YYYY" value="' + MMDate.today() + '">' +
       '<label>Time spent on job (hours)</label><input id="ivhours" type="number" inputmode="decimal" min="0" step="0.25" value="' + hours + '" oninput="recalcInvoiceLabour()" placeholder="e.g. 1.5">' +
       '<div class="muted" style="margin-top:-6px;margin-bottom:10px">Hourly rate: ' + money(rate) + ' / hour. Labour is calculated automatically.</div>' +
       '<label>Labour (£) — calculated automatically</label><input id="ivl" type="number" step="0.01" value="' + labour.toFixed(2) + '" readonly style="opacity:.8">' +
@@ -1486,7 +1488,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '<div style="font-weight:900;font-size:20px">' + esc(company) + '</div>' +
         (contact ? '<div class="invoice-contact">' + contact + '</div>' : '') +
       '</div><div style="text-align:right"><div class="inv-title">INVOICE</div>' +
-        '<div class="inv-meta">' + esc(i.number || '') + '<br>' + esc(i.date || '') + '</div>' +
+        '<div class="inv-meta">' + esc(i.number || '') + '<br>' + esc(MMDate.format(i.date || '')) + '</div>' +
         '<div style="margin-top:7px;font-weight:900">' + (i.paid ? 'PAID' : 'UNPAID') + '</div>' +
       '</div></div>' +
 
@@ -1589,7 +1591,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
       (settings.companyPhone ? settings.companyPhone + '\n' : '') +
       (settings.companyEmail ? settings.companyEmail + '\n' : '') +
       '\nInvoice: ' + (i.number || '') +
-      '\nDate: ' + (i.date || '') +
+      '\nDate: ' + MMDate.format(i.date || '') +
       '\nBilled to: ' + cust.name +
       (vehicle.reg ? '\nRegistration: ' + vehicle.reg : '') +
       '\nTotal: ' + money(i.total || 0) +
@@ -1802,7 +1804,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
         '<div style="font-weight:900;font-size:20px">' + esc(company) + '</div>' +
         (contact ? '<div class="invoice-contact">' + contact + '</div>' : '') +
       '</div><div style="text-align:right"><div class="inv-title">INVOICE</div>' +
-        '<div class="inv-meta">' + esc(i.number || '') + '<br>' + esc(i.date || '') + '</div>' +
+        '<div class="inv-meta">' + esc(i.number || '') + '<br>' + esc(MMDate.format(i.date || '')) + '</div>' +
         '<div style="margin-top:7px;font-weight:900">' + (i.paid ? 'PAID' : 'UNPAID') + '</div></div></div>' +
       '<div class="bill-grid"><div class="bill-box"><b>BILLED TO</b><br>' + esc(cust.name) +
         (cust.address ? '<br>' + esc(cust.address).replace(/\n/g,'<br>') : '') +
@@ -1986,7 +1988,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 
     var metaY = 758;
     rightText(metaY, 11, i.number || '', true);
-    rightText(metaY - 17, 10, i.date || '', false);
+    rightText(metaY - 17, 10, MMDate.format(i.date || ''), false);
     rightText(metaY - 36, 11, i.paid ? 'PAID' : 'UNPAID', true);
 
     y -= 8;
@@ -2070,9 +2072,9 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 
     if (!i.paid) {
       var terms = Math.max(1, Number((db.settings||{}).paymentTermsDays || 14));
-      var due = new Date((i.date || new Date().toISOString().slice(0,10)) + 'T12:00:00');
+      var due = new Date((i.date || MMDate.today()) + 'T12:00:00');
       if(!isNaN(due)) due.setDate(due.getDate()+terms);
-      var dueText = isNaN(due) ? '' : String(due.getDate()).padStart(2,'0')+'/'+String(due.getMonth()+1).padStart(2,'0')+'/'+due.getFullYear();
+      var dueText = isNaN(due) ? '' : String(due.getDate()).padStart(2,'0')+'-'+String(due.getMonth()+1).padStart(2,'0')+'-'+due.getFullYear();
       ensure(105);
       y -= 8; line(y); y -= 22;
       text(left,y,11,'PAYMENT DETAILS',true); y-=17;
@@ -2398,7 +2400,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 
     rightText(786, 27, 'INVOICE', true);
     rightText(754, 11, i.number || '', true);
-    rightText(735, 10, i.date || '', false);
+    rightText(735, 10, MMDate.format(i.date || ''), false);
     rightText(711, 11, i.paid ? 'PAID' : 'UNPAID', true);
 
     // Divider is deliberately below the status so it never runs through it.
@@ -2939,9 +2941,7 @@ window.cloudCancelRecoveryV4310=function(){
     cloudStatus = status || '';
     cloudError = error || '';
     updateCloudBadge();
-    if(page === 'Settings'){
-      try{ render(); }catch(e){}
-    }
+    if(window.mmUpdateSyncUI)window.mmUpdateSyncUI();
   }
 
   async function cloudRow(){
@@ -2955,128 +2955,33 @@ window.cloudCancelRecoveryV4310=function(){
     return rows[0] || null;
   }
 
-  async function pushCloudNow(forceOverwrite){
-    if(!cloudSession || cloudPushBusy) return false;
-    cloudPushBusy=true; updateCloudBadge();
-    try{
-      const sess=await ensureSession(); if(!sess)return false;
-      const uid=getUserId(); if(!uid)return false;
-      const current=await cloudRow();
-      const cloudRev=current&&current.updated_at||'';
-      const baseRev=localStorage.getItem(LAST_CLOUD_KEY)||'';
-      if(current && !forceOverwrite && (!baseRev || cloudRev!==baseRev)){
-        cloudLastSync=cloudRev;
-        setCloudState('Conflict — cloud protected','Cloud changed since this device last synced. Automatic upload blocked.');
-        return false;
+  window.mmCloudTransport={
+    account:async function(){if(recoveryActiveV4310)return null;var s=await ensureSession();return s&&s.user&&s.user.id||null;},
+    read:async function(){var row=await cloudRow();if(row)row.data=normaliseDb(row.data||{});return row;},
+    write:async function(data,revision){
+      var uid=getUserId();if(!uid)throw new Error('Sign in to Cloud Sync.');
+      var stamp=new Date(Math.max(Date.now(),(Date.parse(revision)||0)+1)).toISOString();
+      var res;
+      if(revision){
+        res=await supabaseRequest('/rest/v1/mechanic_mate_data?user_id=eq.'+encodeURIComponent(uid)+'&updated_at=eq.'+encodeURIComponent(revision),{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify({data:data,updated_at:stamp})});
+        return {ok:Array.isArray(res.body)&&res.body.length===1,revision:stamp};
       }
-      if(current&&current.data){
-        try{localStorage.setItem('mechanic-mate-backup-'+Date.now(),JSON.stringify({createdAt:new Date().toISOString(),reason:'cloud-before-upload',cloudUpdatedAt:cloudRev,data:current.data}));}catch(e){}
-      }
-      const now=new Date().toISOString();
-      await supabaseRequest('/rest/v1/mechanic_mate_data?on_conflict=user_id',{
-        method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
-        body:JSON.stringify({user_id:uid,data:db,updated_at:now})
-      });
-      cloudLastSync=now;
-      localStorage.setItem(LAST_CLOUD_KEY,now);
-      localStorage.setItem(LOCAL_UPDATED_KEY,now);
-      var verifyRow=await cloudRow();
-      var localFp=localFingerprintV414(), cloudFp=cloudFingerprintV414(verifyRow);
-      if(localFp!==cloudFp){
-        setCloudState('Sync mismatch',syncProofTextV414(verifyRow));
-        throw new Error('Cloud upload verification failed. Device '+localFp+' / Cloud '+cloudFp);
-      }
-      if(verifyRow && verifyRow.updated_at){
-        cloudLastSync=verifyRow.updated_at;
-        localStorage.setItem(LAST_CLOUD_KEY,verifyRow.updated_at);
-      }
-      setCloudState('Synced',syncProofTextV414(verifyRow)); return true;
-    }catch(e){
-      console.error('Cloud push failed',e); setCloudState('Sync failed',e.message||'Could not save to cloud'); return false;
-    }finally{cloudPushBusy=false;updateCloudBadge();}
-  }
-
-  window.cloudScheduleSave = function(){
-    if(!cloudSession) return;
-    if(cloudSaveTimer) clearTimeout(cloudSaveTimer);
-    cloudSaveTimer = setTimeout(function(){
-      cloudSaveTimer = null;
-      pushCloudNow();
-    },700);
+      try{res=await supabaseRequest('/rest/v1/mechanic_mate_data',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({user_id:uid,data:data,updated_at:stamp})});return {ok:true,revision:stamp};}
+      catch(e){if(await cloudRow())return {ok:false};throw e;}
+    },
+    status:function(s,d){setCloudState(s,d);},
+    get:function(){return db;},
+    install:function(data){localStorage.setItem(KEY,JSON.stringify(data));db=data;},
+    acknowledged:function(rev){if(rev)localStorage.setItem(LAST_CLOUD_KEY,rev);},
+    recovery:function(){return recoveryActiveV4310;}
   };
 
-  async function applyCloudData(row){
-    if(!row) return false;
-    mmBackupLocal('before-cloud-download');
-    var incoming=normaliseDb(row.data||{});
-    db=incoming;
-    localStorage.setItem(KEY,JSON.stringify(db));
-    localStorage.setItem(LOCAL_UPDATED_KEY,row.updated_at||new Date().toISOString());
-    if(row.updated_at)localStorage.setItem(LAST_CLOUD_KEY,row.updated_at);
-    cloudLastSync=row.updated_at||cloudLastSync;
+  async function pushCloudNow(){return window.mmSync?window.mmSync.run():false;}
 
-    // Verify what was actually persisted, not merely the in-memory object.
-    var persisted;
-    try{ persisted=normaliseDb(JSON.parse(localStorage.getItem(KEY)||'{}')); }
-    catch(e){ throw new Error('Downloaded data could not be re-read from this device.'); }
-    var expected=dataFingerprintV415(incoming), actual=dataFingerprintV415(persisted);
-    if(expected!==actual) throw new Error('Downloaded data verification failed: '+actual+' != '+expected);
-    db=persisted;
-    render();
-    return true;
-  }
-
-  async function pullCloudIfNewer(force){
-    if(manualCloudOperationV416 && !force)return false;
-    if(!cloudSession || cloudPullBusy || cloudPushBusy || cloudSaveTimer) return false;
-    cloudPullBusy = true;
-    updateCloudBadge();
-    try{
-      const row = await cloudRow();
-      if(!row) return false;
-      const localTime = Date.parse(localStorage.getItem(LOCAL_UPDATED_KEY) || '') || 0;
-      const cloudTime = Date.parse(row.updated_at || '') || 0;
-      if(force || cloudTime > localTime + 500){
-        await applyCloudData(row);
-      }
-      setCloudState('Synced',syncProofTextV414(row));
-      return true;
-    }catch(e){
-      console.error('Cloud pull failed',e);
-      setCloudState('Sync failed',e.message || 'Could not load cloud data');
-      return false;
-    }finally{
-      cloudPullBusy = false;
-      updateCloudBadge();
-    }
-  }
-
-  async function firstSyncAfterLogin(){
-    setCloudState('Checking cloud…',''); cloudPullBusy=true; updateCloudBadge();
-    try{
-      const row=await cloudRow(); cloudPullBusy=false;
-      if(!row){setCloudState('Uploading this device…','');await pushCloudNow(true);return;}
-      const localTime=Date.parse(localStorage.getItem(LOCAL_UPDATED_KEY)||'')||0;
-      const cloudTime=Date.parse(row.updated_at||'')||0;
-      const baseRev=localStorage.getItem(LAST_CLOUD_KEY)||'';
-      if(!localHasUsefulData()){
-        await applyCloudData(row); setCloudState('Downloaded cloud data','');
-      }else if(baseRev===row.updated_at){
-        if(cloudTime>localTime+500)await applyCloudData(row);
-        else if(localTime>cloudTime+500)await pushCloudNow(false);
-        else var proofRow=await cloudRow();
-      if(localFingerprintV414()===cloudFingerprintV414(proofRow)){
-        setCloudState('Synced',syncProofTextV414(proofRow));
-      }else{
-        setCloudState('Sync mismatch',syncProofTextV414(proofRow));
-      }
-      }else{
-        cloudLastSync=row.updated_at||'';
-        setCloudState('Review required','Both copies contain data. Automatic overwrite is blocked on this device.');
-      }
-    }catch(e){cloudPullBusy=false;setCloudState('Sync failed',e.message||'Could not complete first sync');}
-    finally{updateCloudBadge();}
-  }
+  window.cloudScheduleSave=function(){if(window.mmSync)window.mmSync.changed();};
+  async function applyCloudData(){return window.mmSync?window.mmSync.run():false;}
+  async function pullCloudIfNewer(){return window.mmSync?window.mmSync.run():false;}
+  async function firstSyncAfterLogin(){if(recoveryActiveV4310)return;return window.mmSync?window.mmSync.run():false;}
 
   window.cloudSignIn = async function(){
     if(recoveryActiveV4310)return;
@@ -3139,124 +3044,8 @@ window.cloudCancelRecoveryV4310=function(){
   };
 
   
-  window.cloudForceUploadV415 = async function(){
-    if(!cloudSession){alert('Sign in first.');return;}
-    if(manualCloudOperationV416){alert('A cloud operation is already running.');return;}
-    if(!confirm('Replace the cloud copy with THIS DEVICE? The current cloud data will be backed up locally first.'))return;
-
-    manualCloudOperationV416=true;
-    if(cloudSaveTimer){clearTimeout(cloudSaveTimer);cloudSaveTimer=null;}
-    try{
-      var uid=getUserId();
-      if(!uid)throw new Error('No signed-in user ID.');
-      var chosen=normaliseDb(JSON.parse(JSON.stringify(db)));
-      var chosenFp=dataFingerprintV415(chosen);
-      setCloudState('Uploading chosen device…',summaryTextV415('Device',chosen));
-
-      var before=await cloudRow();
-      if(before){try{mmBackupObject('cloud-before-forced-upload',before.data||{});}catch(_){}}
-
-      var stamp=new Date().toISOString();
-
-      // Use the app's actual authenticated Supabase request helper.
-      var updateResult=await supabaseRequest(
-        '/rest/v1/mechanic_mate_data?user_id=eq.'+encodeURIComponent(uid),
-        {
-          method:'PATCH',
-          headers:{'Prefer':'return=representation','Accept':'application/json'},
-          body:JSON.stringify({data:chosen,updated_at:stamp})
-        }
-      );
-
-      var changed=Array.isArray(updateResult.body)?updateResult.body:[];
-      if(changed.length===0){
-        await supabaseRequest('/rest/v1/mechanic_mate_data',{
-          method:'POST',
-          headers:{'Prefer':'return=representation','Accept':'application/json'},
-          body:JSON.stringify({user_id:uid,data:chosen,updated_at:stamp})
-        });
-      }
-
-      // Fetch independently after the write and compare actual cloud content.
-      var after=await cloudRow();
-      if(!after)throw new Error('Upload completed but no cloud row could be read back.');
-      var cloudFp=cloudFingerprintV414(after);
-
-      if(chosenFp!==cloudFp){
-        setCloudState('UPLOAD MISMATCH',
-          summaryTextV415('Device',chosen)+'\n'+summaryTextV415('Cloud',after.data||{}));
-        return;
-      }
-
-      if(after.updated_at){
-        localStorage.setItem(LAST_CLOUD_KEY,after.updated_at);
-        localStorage.setItem(LOCAL_UPDATED_KEY,after.updated_at);
-        cloudLastSync=after.updated_at;
-      }
-      setCloudState('Verified upload','Device and cloud genuinely match.\n'+syncProofTextV414(after));
-    }catch(e){
-      console.error(e);
-      setCloudState('UPLOAD FAILED',String(e&&e.message||e||'Unknown upload error'));
-    }finally{
-      setTimeout(function(){manualCloudOperationV416=false; autoReconcileV42();},1500);
-    }
-  };
-
-
-  async function autoReconcileV42(){
-    if(!cloudSession || manualCloudOperationV416 || document.visibilityState==='hidden')return;
-    try{
-      var row=await cloudRow();
-      if(!row)return;
-      var localFp=dataFingerprintV415(db), cloudFp=cloudFingerprintV414(row);
-      if(localFp===cloudFp){
-        if(row.updated_at){
-          localStorage.setItem(LAST_CLOUD_KEY,row.updated_at);
-          cloudLastSync=row.updated_at;
-        }
-        setCloudState('Synced',syncProofTextV414(row));
-        return;
-      }
-
-      var base=localStorage.getItem(LAST_CLOUD_KEY)||'';
-      var localUpdated=localStorage.getItem(LOCAL_UPDATED_KEY)||'';
-      var cloudUpdated=row.updated_at||'';
-
-      // Safe automatic download: this device has not changed since its last known cloud revision,
-      // but cloud has advanced on another device.
-      if(base && cloudUpdated && base!==cloudUpdated && (!localUpdated || localUpdated<=base)){
-        manualCloudOperationV416=true;
-        try{
-          await applyCloudData(row);
-          setCloudState('Synced',syncProofTextV414(row));
-        }finally{
-          manualCloudOperationV416=false;
-        }
-        return;
-      }
-
-      // If this device has local changes, normal save logic gets first chance to push.
-      // If cloud also changed, leave both untouched and surface a real conflict.
-      if(base && cloudUpdated===base && localUpdated && localUpdated>base){
-        await pushCloudNow(false);
-        return;
-      }
-
-      setCloudState('Sync issue',
-        'Device and cloud differ. Automatic overwrite blocked.\n'+syncProofTextV414(row));
-    }catch(e){
-      console.warn('Auto reconcile:',e);
-    }
-  }
-
-  window.addEventListener('focus',function(){setTimeout(autoReconcileV42,250);});
-  document.addEventListener('visibilitychange',function(){
-    if(document.visibilityState==='visible')setTimeout(autoReconcileV42,250);
-  });
-  setInterval(function(){
-    if(document.visibilityState==='visible')autoReconcileV42();
-  },30000);
-
+  window.cloudForceUploadV415=async function(){return window.mmSync?window.mmSync.run():false;};
+  async function autoReconcileV42(){return window.mmSync?window.mmSync.run():false;}
 
   const PHOTO_BUCKET_V43='mechanic-mate-photos';
   const photoObjectUrlsV43=new Map();
@@ -3534,54 +3323,17 @@ window.cloudCancelRecoveryV4310=function(){
     render();
   };
 
-  window.cloudVerifyV414 = async function(){
-    if(!cloudSession){ alert('Sign in to Cloud Sync first.'); return; }
-    setCloudState('Verifying…','Comparing actual content.');
-    try{
-      var row=await cloudRow();
-      if(!row){setCloudState('No cloud row',summaryTextV415('Device',db));return;}
-      var localS=dataSummaryV415(db),cloudS=dataSummaryV415(row.data||{});
-      var details=syncProofTextV414(row);
-      if(localS.fp===cloudS.fp){
-        setCloudState('Synced','VERIFIED\n'+details);
-      }else{
-        setCloudState('Sync mismatch',details);
-      }
-    }catch(e){setCloudState('Verify failed',e.message||'Could not compare data.');}
-  };
-
-  window.cloudSyncNow = async function(){
-    if(!cloudSession){ alert('Sign in first.'); return; }
-    if(cloudSaveTimer){
-      clearTimeout(cloudSaveTimer);
-      cloudSaveTimer = null;
-      await pushCloudNow();
-    }else{
-      await pullCloudIfNewer(true);
-    }
-    render();
-  };
-
-  window.cloudUploadThisDevice = async function(){
-    if(!cloudSession){ alert('Sign in first.'); return; }
-    if(!confirm('Replace the cloud copy with the data currently on this device?')) return;
-    await pushCloudNow();
-    render();
-  };
-
-  window.cloudDownloadToDevice = async function(){
-    if(!cloudSession){ alert('Sign in first.'); return; }
-    if(!confirm('Replace this device’s local copy with the cloud copy?')) return;
-    await pullCloudIfNewer(true);
-    render();
-  };
+  window.cloudVerifyV414=async function(){return window.mmSync?window.mmSync.run():false;};
+  window.cloudSyncNow=async function(){return window.mmSync?window.mmSync.run():false;};
+  window.cloudUploadThisDevice=window.cloudSyncNow;
+  window.cloudDownloadToDevice=window.cloudSyncNow;
 
   window.cloudShowSafetyBackups=function(){
     const a=[];
     for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('mechanic-mate-backup-')){try{a.push(JSON.parse(localStorage.getItem(k)))}catch(e){}}}
     a.sort((x,y)=>String(y.createdAt||'').localeCompare(String(x.createdAt||'')));
     if(!a.length){alert('No automatic safety backups yet.');return;}
-    alert('Automatic safety backups on this device:\n\n'+a.slice(0,20).map((x,i)=>(i+1)+'. '+(x.createdAt||'')+' — '+(x.reason||'backup')+' — '+((x.data&&x.data.jobs)||[]).length+' jobs').join('\n'));
+    alert('Automatic safety backups on this device:\n\n'+a.slice(0,20).map((x,i)=>(i+1)+'. '+MMDate.stamp(x.createdAt)+' — '+(x.reason||'backup')+' — '+((x.data&&x.data.jobs)||[]).length+' jobs').join('\n'));
   };
   window.cloudExportSafetyBackups=function(){
     const a=[];
@@ -3600,15 +3352,15 @@ window.cloudCancelRecoveryV4310=function(){
         '<div class="card cloud-card"><b>Cloud sync</b>' +
         '<div class="cloud-status"><div class="cloud-email">☁️ ' + esc(getUserEmail()) + '</div>' +
         '<div class="muted">' + esc(cloudStatus || 'Signed in') +
-        (cloudLastSync ? '<br>Last sync: ' + esc(new Date(cloudLastSync).toLocaleString()) : '') +
+        (cloudLastSync ? '<br>Last sync: ' + esc(MMDate.stamp(cloudLastSync)) : '') +
         (cloudError ? '<br>' + esc(cloudError) : '') + '</div></div>' +
         '<p class="muted">Changes are saved to Supabase automatically and can be opened from your other signed-in devices.</p>' +
-        '<div class="actions"><button class="primary" onclick="cloudSyncNow()">Sync now</button><button onclick="cloudVerifyV414()">Verify sync</button>' +
-        '<button onclick="cloudDownloadToDevice()">Download cloud copy</button>' +
-        '<button onclick="cloudForceUploadV415()">Upload this device</button>' +
+        '<div class="actions"><button class="primary" onclick="cloudSyncNow()">Sync now</button>' +
+        '<button onclick="mmReviewConflicts()">Review overlapping changes</button>' +
+        '' +
         '<button class="danger" onclick="cloudSignOut()">Sign out</button></div>' +
         '<div class="actions"><button onclick="cloudShowSafetyBackups()">View safety backups</button><button onclick="cloudExportSafetyBackups()">Export safety backups</button></div>' +
-        '<div class="muted">Safe Sync v43.5 automatically reconciles verified device/cloud changes and keeps manual controls as a fallback. Lightweight safety snapshots exclude photo image bytes.</div>'+
+        '<div class="muted">Independent edits merge automatically. Only overlapping changes need review. Update both devices to v44.1 before editing across devices.</div>'+
         '<div class="card" style="margin-top:14px"><div class="row wrap"><b>Job photo storage</b><span class="pill">Supabase Storage</span></div><p class="muted">Job photos are stored privately in Supabase Storage so the main job database stays lightweight and photos remain available on your signed-in devices.</p><div id="photoStorageSummaryV436" class="cloud-status"><span class="muted">Checking photo storage…</span></div><div class="actions"><button onclick="refreshPhotoStoragePanelV436()">Refresh storage</button><button onclick="showStorageUsageV431()">Device storage usage</button></div></div></div>';
     }else{
       cloudHtml =
@@ -3633,37 +3385,7 @@ window.cloudCancelRecoveryV4310=function(){
   }
   updateCloudBadge();
 
-  if(cloudSession){
-    ensureSession().then(function(s){
-      if(s){
-        firstSyncAfterLogin();
-      }
-    });
-  }
-
-  document.addEventListener('visibilitychange',function(){
-    if(document.visibilityState === 'visible' && cloudSession) pullCloudIfNewer(false);
-  });
-  window.addEventListener('focus',function(){
-    if(cloudSession) pullCloudIfNewer(false);
-  });
-  window.addEventListener('online',function(){
-    if(cloudSession){
-      if(cloudSaveTimer){
-        clearTimeout(cloudSaveTimer);
-        cloudSaveTimer = null;
-        pushCloudNow();
-      }else{
-        pullCloudIfNewer(false);
-      }
-    }
-  });
-
-  // Gentle periodic check while the app is open.
-  setInterval(function(){
-    if(cloudSession && document.visibilityState === 'visible') pullCloudIfNewer(false);
-  },60000);
-
+  // One scheduler in workshop.js coordinates saving, reconnects and foreground refreshes.
   render();
 })();
 </script>
@@ -3890,7 +3612,7 @@ window.cloudCancelRecoveryV4310=function(){
           var partLines = typeof window.jobPartLines === 'function' ? window.jobPartLines(j) : [];
           var partsText = partLines.length ? partLines.map(function(x){ return x.name + ' × ' + x.qty; }).join(', ') : 'No parts';
           return '<div class="history-job"><div class="row"><div><div class="history-title">' + esc(j.title || 'Job') + '</div>' +
-            '<div class="muted">' + esc(j.date || '') + ' • ' + esc(j.status || '') + '</div></div>' +
+            '<div class="muted">' + esc(MMDate.format(j.date || '')) + ' • ' + esc(j.status || '') + '</div></div>' +
             (inv ? '<span class="stock-pill">' + (inv.paid ? 'Paid' : 'Unpaid') + ' • ' + money(inv.total || 0) + '</span>' : '') +
             '</div><div class="muted">Time: ' + Number(j.hours || 0) + 'h<br>Parts: ' + esc(partsText) + '</div>' +
             '<div class="actions"><button onclick="closeM();jobForm(\'' + j.id + '\')">View / Edit Job</button>' +
@@ -4157,7 +3879,7 @@ window.cloudCancelRecoveryV4310=function(){
     return '<div class="inline-invoice"><div class="inv-head"><div>' +
       (logo?'<img class="inv-logo" src="'+logo+'" alt="Company logo">':'') +
       '<div style="font-weight:900;font-size:20px">'+esc(company)+'</div>'+(contact?'<div class="invoice-contact">'+contact+'</div>':'') +
-      '</div><div style="text-align:right"><div class="inv-title">INVOICE</div><div class="inv-meta">'+esc(i.number||'')+'<br>'+esc(i.date||'')+'</div><div style="margin-top:7px;font-weight:900">'+(i.paid?'PAID':'UNPAID')+'</div></div></div>' +
+      '</div><div style="text-align:right"><div class="inv-title">INVOICE</div><div class="inv-meta">'+esc(i.number||'')+'<br>'+esc(MMDate.format(i.date||''))+'</div><div style="margin-top:7px;font-weight:900">'+(i.paid?'PAID':'UNPAID')+'</div></div></div>' +
       '<div class="bill-grid"><div class="bill-box"><b>BILLED TO</b><br>'+esc(cust.name)+(cust.address?'<br>'+esc(cust.address).replace(/\n/g,'<br>'):'')+(cust.phone?'<br>'+esc(cust.phone):'')+(cust.email?'<br>'+esc(cust.email):'')+'</div>' +
       '<div class="bill-box"><b>VEHICLE / JOB</b><br>'+(vehicle.reg?'Registration: '+esc(vehicle.reg)+'<br>':'')+(vb?vb+'<br>':'')+(vehicle.title?'Job: '+esc(vehicle.title):'')+'</div></div>' +
       (Number(i.labour||0)?'<table><tbody><tr><td><b>Labour</b>'+(i.hours?' — '+esc(i.hours)+' hours @ '+money(db.settings.hourlyRate||0)+'/hr':'')+'</td><td style="text-align:right"><b>'+money(i.labour)+'</b></td></tr></tbody></table>':'') +
@@ -4379,7 +4101,7 @@ window.cloudCancelRecoveryV4310=function(){
       '<label>Customer name</label><input id="qcustomer" value="'+esc(q.customer||'')+'">'+
       '<label>Customer email</label><input id="qemail" type="email" value="'+esc(q.email||c.email||'')+'">'+
       '<label>Quote / job title</label><input id="qtitle" value="'+esc(q.title||'')+'" placeholder="e.g. Full service and front brakes">'+
-      '<div class="two"><div><label>Date</label><input id="qdate" class="date-safe" type="text" placeholder="YYYY-MM-DD" value="'+esc(q.date||quoteToday())+'" oninput="if(!\''+(id||'')+'\')qnumber.value=v41QuoteNo(this.value)"></div>'+
+      '<div class="two"><div><label>Date</label><input id="qdate" class="date-safe" type="text" placeholder="DD-MM-YYYY" value="'+esc(q.date||quoteToday())+'" oninput="if(!\''+(id||'')+'\')qnumber.value=v41QuoteNo(this.value)"></div>'+
       '<div><label>Status</label><select id="qstatus"><option>Draft</option><option>Sent</option><option>Accepted</option><option>Declined</option><option>Converted</option></select></div></div>'+
       '<label>Registration</label><input id="qreg" value="'+esc(q.reg||c.reg||c.vehicle||'')+'">'+
       '<div class="two"><div><label>Make</label><input id="qmake" value="'+esc(q.make||c.make||'')+'"></div><div><label>Model</label><input id="qmodel" value="'+esc(q.model||c.model||'')+'"></div></div>'+
@@ -4403,7 +4125,7 @@ window.cloudCancelRecoveryV4310=function(){
     var date=qdate.value.trim();
     var parsed=new Date(date+'T12:00:00Z');
     if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(parsed.getTime())||parsed.toISOString().slice(0,10)!==date){
-      alert('Enter a valid quote date as YYYY-MM-DD.');return;
+      alert('Enter a valid quote date as DD-MM-YYYY.');return;
     }
     var number=qnumber.value.trim()||old.number||quoteNo(date,id);
     if((db.quotes||[]).some(function(q){return q.id!==id&&q.number===number;})){
@@ -4444,7 +4166,7 @@ window.cloudCancelRecoveryV4310=function(){
     q.status=status;save();render();
   };
   function quoteCard(q){
-    return '<div class="card"><div class="row"><div><b>'+esc(q.number||'Quote')+' • '+esc(q.title||'Untitled quote')+'</b><div class="muted">'+esc(q.customer||'No customer')+' • '+esc(q.reg||'No reg')+' • '+esc(q.date||'')+'</div></div>'+
+    return '<div class="card"><div class="row"><div><b>'+esc(q.number||'Quote')+' • '+esc(q.title||'Untitled quote')+'</b><div class="muted">'+esc(q.customer||'No customer')+' • '+esc(q.reg||'No reg')+' • '+esc(MMDate.format(q.date||''))+'</div></div>'+
       '<span class="quote-status '+quoteStatusClass(q.status)+'">'+esc(q.status||'Draft')+'</span></div>'+
       '<div class="row" style="margin-top:8px"><span class="muted">'+(q.workItems||[]).length+' work item'+((q.workItems||[]).length===1?'':'s')+' • '+(q.partLines||[]).length+' part line'+((q.partLines||[]).length===1?'':'s')+'</span><b>'+quoteMoney(q.total!=null?q.total:quoteTotal(q))+'</b></div>'+
       '<div class="actions"><button class="primary" onclick="viewQuote(\''+q.id+'\',this)">View</button><button onclick="quoteForm(\''+q.id+'\')">Edit</button>'+
@@ -4472,7 +4194,7 @@ window.cloudCancelRecoveryV4310=function(){
     return '<div class="quote-preview">'+
       '<div class="row" style="align-items:flex-start"><div>'+(s.companyLogo?'<img class="quote-logo" src="'+s.companyLogo+'" alt="Company logo">':'')+
       '<h2 style="margin:4px 0">'+esc(s.companyName||'Mechanic Mate')+'</h2><div class="muted">'+esc(s.companyPhone||'')+(s.companyEmail?'<br>'+esc(s.companyEmail):'')+'</div></div>'+
-      '<div style="text-align:right"><h2 style="font-size:30px;margin:0">QUOTATION</h2><b>'+esc(q.number||'')+'</b><br>'+esc(q.date||'')+'</div></div>'+
+      '<div style="text-align:right"><h2 style="font-size:30px;margin:0">QUOTATION</h2><b>'+esc(q.number||'')+'</b><br>'+esc(MMDate.format(q.date||''))+'</div></div>'+
       '<hr><div class="two"><div><h3>QUOTED TO</h3>'+esc(q.customer||'')+(c.address?'<br>'+esc(c.address).replace(/\n/g,'<br>'):'')+(q.email||c.email?'<br>'+esc(q.email||c.email):'')+'</div>'+
       '<div><h3>VEHICLE</h3>'+esc(q.reg||'')+'<br>'+esc([q.make,q.model,q.engineSize].filter(Boolean).join(' '))+'</div></div>'+
       (q.title?'<h3>'+esc(q.title)+'</h3>':'')+
@@ -4534,7 +4256,7 @@ window.cloudCancelRecoveryV4310=function(){
     text(left,y,20,s.companyName||'Mechanic Mate',true);rt(y,25,'QUOTATION',true);y-=26;
     if(s.companyPhone){text(left,y,9,s.companyPhone,false);y-=13}
     if(s.companyEmail){text(left,y,9,s.companyEmail,false);y-=13}
-    rt(756,11,q.number||'',true);rt(739,10,q.date||'',false);
+    rt(756,11,q.number||'',true);rt(739,10,MMDate.format(q.date||''),false);
     y=695;line();y-=24;
     text(left,y,12,'QUOTED TO',true);y-=18;wrap(q.customer||'',10,55,false);
     var c=quoteCustomer(q.customer||'');if(c.address){String(c.address).split(/\n/).forEach(function(a){wrap(a,9,62,false)})}
@@ -4611,7 +4333,7 @@ window.cloudCancelRecoveryV4310=function(){
       make:q.make||'',
       model:q.model||'',
       engineSize:q.engineSize||'',
-      date:new Date().toISOString().slice(0,10),
+      date:MMDate.today(),
       status:'Booked',
       location:'',
       notes:note,
@@ -4727,7 +4449,7 @@ window.cloudCancelRecoveryV4310=function(){
     var lab=Number(j.hours||0)*Number((db.settings||{}).hourlyRate||0);
     return '<div class="card '+(jobNeedsInvoice(j)?'attention-card':'')+'">'+
       '<div class="row"><b>'+esc(j.title||'Untitled job')+'</b><span class="pill '+statusClass(j)+'">'+esc(statusDisplay(j))+'</span></div>'+
-      '<div class="muted">'+esc(j.customer||'No customer')+' • '+esc(j.reg||'No reg')+' • '+esc(j.date||'')+'</div>'+
+      '<div class="muted">'+esc(j.customer||'No customer')+' • '+esc(j.reg||'No reg')+' • '+esc(MMDate.format(j.date||''))+'</div>'+
       (j.hours?'<div class="muted">'+esc(j.hours)+'h labour = '+money(lab)+'</div>':'')+
       (ps.length?'<div class="muted">'+ps.length+' linked part'+(ps.length===1?'':'s')+'</div>':'')+
       '<div class="actions"><button onclick="jobForm(\''+j.id+'\')">Open</button>'+
@@ -4790,7 +4512,7 @@ window.cloudCancelRecoveryV4310=function(){
 <script>
 (function(){
   var STATUS_OPTIONS=['Pending','Booked','In progress','Complete','Invoiced','Paid','Cancelled'];
-  window.jobCalendarMonth=window.jobCalendarMonth||new Date().toISOString().slice(0,7);
+  window.jobCalendarMonth=window.jobCalendarMonth||MMDate.today().slice(0,7);
 
   function hasInvoiceV35(id){return (db.invoices||[]).some(function(i){return i.jobId===id;});}
   function needsInvoiceV35(j){return j.status==='Complete'&&!hasInvoiceV35(j.id);}
@@ -4799,7 +4521,7 @@ window.cloudCancelRecoveryV4310=function(){
   function formatDateV35(s){
     if(!validDateV35(s))return s||'';
     var a=s.split('-'),d=new Date(Date.UTC(+a[0],+a[1]-1,+a[2]));
-    return d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
+    return MMDate.format(s);
   }
   function statusOptionsV35(current){
     return STATUS_OPTIONS.map(function(s){return '<option '+(s===current?'selected':'')+'>'+s+'</option>';}).join('');
@@ -4815,7 +4537,7 @@ window.cloudCancelRecoveryV4310=function(){
   window.jobForm=function(id){
     var j=(db.jobs||[]).find(function(x){return x.id===id;})||{};
     var lines=(typeof jobPartLines==='function')?jobPartLines(j):[];
-    var created=j.date||new Date().toISOString().slice(0,10);
+    var created=j.date||MMDate.today();
     var linked='';
     if(id){
       linked='<div class="card"><div class="row"><b>Linked parts</b><button class="primary" onclick="jobPartsMenu(\''+id+'\')">＋ Add / Select Parts</button></div>'+
@@ -4830,7 +4552,7 @@ window.cloudCancelRecoveryV4310=function(){
       '<label>Registration</label><input id="jr" value="'+esc(j.reg||'')+'">'+
       '<div class="vehicle-grid"><div><label>Make</label><input id="jmake" value="'+esc(j.make||'')+'"></div><div><label>Model</label><input id="jmodel" value="'+esc(j.model||'')+'"></div></div>'+
       '<label>Engine size / engine</label><input id="jengine" value="'+esc(j.engineSize||'')+'">'+
-      '<div class="two"><div><label>Date Created</label><input id="jd" class="date-safe" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="'+esc(created)+'"></div><div><label>Booked For</label><div class="booking-date-wrap"><input id="jbooked" class="date-safe" type="text" inputmode="numeric" placeholder="DD-MM-YYYY" value="'+esc(bookingDateToUKV38(j.bookedFor||''))+'"><button type="button" aria-label="Open booking calendar" title="Open booking calendar" onclick="openBookingDatePickerV36()">📅</button></div></div></div>'+
+      '<div class="two"><div><label>Date Created</label><input id="jd" class="date-safe" type="text" inputmode="numeric" placeholder="DD-MM-YYYY" value="'+esc(created)+'"></div><div><label>Booked For</label><div class="booking-date-wrap"><input id="jbooked" class="date-safe" type="text" inputmode="numeric" placeholder="DD-MM-YYYY" value="'+esc(bookingDateToUKV38(j.bookedFor||''))+'"><button type="button" aria-label="Open booking calendar" title="Open booking calendar" onclick="openBookingDatePickerV36()">📅</button></div></div></div>'+
       '<div class="muted" style="margin-top:-7px;margin-bottom:10px">Booked For is the appointment date used by the schedule/calendar. Type DD-MM-YYYY or tap 📅 to choose visually.</div>'+
       '<label>Status</label><select id="js">'+['Pending','Booked','In progress','Complete','Invoiced','Paid','Cancelled'].map(function(s){return '<option '+(s===(j.status||'Pending')?'selected':'')+'>'+s+'</option>';}).join('')+'</select>'+
       '<div class="muted" style="margin-top:-7px;margin-bottom:10px">You can move a job backwards or forwards at any time. Ready to Invoice means the saved status is Complete and no invoice has been created yet.</div>'+
@@ -4864,18 +4586,18 @@ window.cloudCancelRecoveryV4310=function(){
     var colour=jobColourV4310(shownStatusV35(j));
     return '<div class="card job-status-card job-status-'+colour+'">'+
       '<div class="row wrap"><b>'+esc(j.title||'Untitled job')+'</b><span class="pill job-status-pill">'+esc(shownStatusV35(j))+'</span></div>'+
-      '<div class="muted">'+esc(j.customer||'No customer')+' • '+esc(j.reg||'No reg')+' • Created '+esc(j.date||'')+'</div>'+
-      (j.bookedFor?'<div class="booked-date">📅 Booked: '+esc(formatDateV35(j.bookedFor))+'</div>':(j.status==='Booked'?'<div class="muted">📅 Booked — no appointment date set</div>':''))+
+      '<div class="muted">'+esc(j.customer||'No customer')+' • '+esc(j.reg||'No reg')+' • Created '+esc(MMDate.format(j.date||''))+'</div>'+
+      (j.bookedFor?'<div class="booked-date '+(j.bookedFor<MMDate.today()?'past-booking':'')+'">'+(j.bookedFor<MMDate.today()?'Past booking: ':'📅 Booked: ')+esc(formatDateV35(j.bookedFor))+'</div>':(j.status==='Booked'?'<div class="muted">📅 Booked — no appointment date set</div>':''))+
       (j.hours?'<div class="muted">'+esc(j.hours)+'h labour = '+money(lab)+'</div>':'')+
       (ps.length?'<div class="muted">'+ps.length+' linked part'+(ps.length===1?'':'s')+'</div>':'')+
       '<div class="actions"><button onclick="jobForm(\''+j.id+'\')">Open</button><select class="quick-status" aria-label="Change job status" onchange="quickJobStatusV35(\''+j.id+'\',this.value)">'+statusOptionsV35(j.status||'Pending')+'</select><button class="primary" onclick="jobPartsMenu(\''+j.id+'\')">＋ Parts</button>'+
-      (ready?'<button class="primary" onclick="invoiceForm(\''+j.id+'\')">Invoice Now</button>':(j.status!=='Paid'&&j.status!=='Cancelled'?'<button onclick="invoiceForm(\''+j.id+'\')">Invoice</button>':''))+'</div></div>';
+      '<button class="danger" onclick="deleteJobV32(\''+j.id+'\')">Delete</button>'+(ready?'<button class="primary" onclick="invoiceForm(\''+j.id+'\')">Invoice Now</button>':(j.status!=='Paid'&&j.status!=='Cancelled'?'<button onclick="invoiceForm(\''+j.id+'\')">Invoice</button>':''))+'</div></div>';
   }
 
   function daysInMonthV35(y,m){return new Date(Date.UTC(y,m+1,0)).getUTCDate();}
   function shiftMonthV35(ym,delta){var a=ym.split('-'),d=new Date(Date.UTC(+a[0],+a[1]-1+delta,1));return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0');}
   window.shiftJobCalendarV35=function(delta){window.jobCalendarMonth=shiftMonthV35(window.jobCalendarMonth,delta);render();};
-  window.jumpJobCalendarTodayV35=function(){window.jobCalendarMonth=new Date().toISOString().slice(0,7);render();};
+  window.jumpJobCalendarTodayV35=function(){window.jobCalendarMonth=MMDate.today().slice(0,7);render();};
 
 
   function bookingDateToUKV38(v){
@@ -4948,7 +4670,7 @@ window.cloudCancelRecoveryV4310=function(){
     var today=nowV36.getFullYear()+'-'+String(nowV36.getMonth()+1).padStart(2,'0')+'-'+String(nowV36.getDate()).padStart(2,'0');
 
     var booked=(db.jobs||[]).filter(function(j){
-      return j.status==='Booked'&&validDateV35(j.bookedFor);
+      return j.status==='Booked'&&validDateV35(j.bookedFor)&&j.bookedFor>=MMDate.today();
     });
     var byDate={};
     booked.forEach(function(j){(byDate[j.bookedFor]||(byDate[j.bookedFor]=[])).push(j);});
@@ -4984,7 +4706,7 @@ window.cloudCancelRecoveryV4310=function(){
 
   function calendarV35(){
     var a=window.jobCalendarMonth.split('-'),y=+a[0],m=+a[1]-1,first=new Date(Date.UTC(y,m,1));
-    var start=(first.getUTCDay()+6)%7,count=daysInMonthV35(y,m),prevCount=daysInMonthV35(y,m-1),today=new Date().toISOString().slice(0,10);
+    var start=(first.getUTCDay()+6)%7,count=daysInMonthV35(y,m),prevCount=daysInMonthV35(y,m-1),today=MMDate.today();
     var booked=(db.jobs||[]).filter(function(j){return j.status==='Booked'&&validDateV35(j.bookedFor);});
     var byDate={};booked.forEach(function(j){(byDate[j.bookedFor]||(byDate[j.bookedFor]=[])).push(j);});
     var cells=[];
@@ -5032,7 +4754,7 @@ window.cloudCancelRecoveryV4310=function(){
 (function(){
   // ---------- v41 helpers ----------
   function v41DateCompact(v){
-    var m=String(v||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    var m=String(MMDate.iso(v)||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if(m)return m[3]+m[2]+m[1].slice(2);
     var d=new Date();return String(d.getDate()).padStart(2,'0')+String(d.getMonth()+1).padStart(2,'0')+String(d.getFullYear()).slice(2);
   }
@@ -5049,10 +4771,10 @@ window.cloudCancelRecoveryV4310=function(){
   window.v41QuoteNo=function(date,id){return v41DocNo('QUO',date,db.quotes,id);};
   function v41DueDate(i){
     var days=Math.max(1,Number((db.settings||{}).paymentTermsDays||14));
-    var d=new Date((i.date||new Date().toISOString().slice(0,10))+'T12:00:00');
+    var d=new Date((i.date||MMDate.today())+'T12:00:00');
     if(isNaN(d))return '';
     d.setDate(d.getDate()+days);
-    return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
+    return String(d.getDate()).padStart(2,'0')+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+d.getFullYear();
   }
 
   // Preserve every existing document reference, including on a newly synced device.
@@ -5102,7 +4824,7 @@ window.cloudCancelRecoveryV4310=function(){
       var img=ph.storagePath
         ? '<img data-storage-photo="'+esc(ph.storagePath)+'" src="'+src+'" alt="Job evidence" style="width:100%;max-height:260px;object-fit:contain;border-radius:10px;background:#111">'
         : '<img src="'+src+'" alt="Job evidence" style="width:100%;max-height:260px;object-fit:contain;border-radius:10px">';
-      return '<div class="card">'+img+'<div class="row"><b>'+esc(ph.category||'Other')+'</b><span class="muted">'+esc(ph.addedAt||'')+'</span></div>'+(ph.note?'<div>'+esc(ph.note)+'</div>':'')+'<div class="actions"><button class="danger" type="button" onclick="removeJobPhotoV41(\''+j.id+'\',\''+ph.id+'\')">Remove</button></div></div>';
+      return '<div class="card">'+img+'<div class="row"><b>'+esc(ph.category||'Other')+'</b><span class="muted">'+esc(MMDate.stamp(ph.addedAt||''))+'</span></div>'+(ph.note?'<div>'+esc(ph.note)+'</div>':'')+'<div class="actions"><button class="danger" type="button" onclick="removeJobPhotoV41(\''+j.id+'\',\''+ph.id+'\')">Remove</button></div></div>';
     }).join('');
     setTimeout(function(){if(window.hydrateStoredPhotosV43)window.hydrateStoredPhotosV43();},0);
     return html||'<div class="muted">No job photos yet.</div>';
@@ -5144,7 +4866,7 @@ window.cloudCancelRecoveryV4310=function(){
             window.v41PendingPhotos[key].push({
               id:(typeof gid==='function'?gid():String(Date.now())+Math.random()),
               category:category,note:note,
-              addedAt:new Date().toLocaleString('en-GB'),
+              addedAt:MMDate.stamp(new Date()),
               data:c.toDataURL('image/jpeg',0.55)
             });
             renderPendingPhotosV413(jobId);
@@ -5161,7 +4883,7 @@ window.cloudCancelRecoveryV4310=function(){
   };
 
   jobForm=function(id){
-    var j=(db.jobs||[]).find(function(x){return x.id===id;})||{},created=j.date||new Date().toISOString().slice(0,10);
+    var j=(db.jobs||[]).find(function(x){return x.id===id;})||{},created=j.date||MMDate.today();
     var type=j.jobType||'Repair / Service';
     var linked='';
     if(id){
@@ -5236,8 +4958,8 @@ window.cloudCancelRecoveryV4310=function(){
     var hours=j?Number(j.hours||0):0,rate=Number((db.settings||{}).hourlyRate||0),labour=hours*rate;
     var c=(db.customers||[]).find(function(x){return x.name===(j&&j.customer||'');})||{};
     var jobsOpt='<option value="">— No linked job —</option>'+db.jobs.slice().reverse().map(function(x){return '<option value="'+x.id+'" '+(x.id===jobId?'selected':'')+'>'+esc(jobLabel(x))+'</option>';}).join('');
-    var today=new Date().toISOString().slice(0,10);
-    openModal('New Invoice','<label>Recent job</label><select id="ivjob" onchange="fillInvoiceFromJob()">'+jobsOpt+'</select><label>Customer name</label><input id="ivc" value="'+esc(j&&j.customer||'')+'"><label>Customer email</label><input id="ive" type="email" value="'+esc(c.email||'')+'"><label>Invoice number</label><input id="ivn" value="'+v41InvoiceNo(today)+'"><label>Date</label><input id="ivd" value="'+today+'" oninput="ivn.value=v41InvoiceNo(this.value)"><label>Hours</label><input id="ivhours" type="number" step="0.25" value="'+hours+'" oninput="recalcInvoiceLabour()"><label>Labour (£)</label><input id="ivl" value="'+labour.toFixed(2)+'" readonly><label>Parts (£)</label><input id="ivp" value="'+partsTotal.toFixed(2)+'" readonly><label>Travel / call-out (£)</label><input id="ivt" type="number" step="0.01" value="0"><label>Other (£)</label><input id="ivo" type="number" step="0.01" value="0"><label>Payment status</label><select id="ivpaid"><option value="false">Unpaid</option><option value="true">Paid</option></select><label>Payment method</label><select id="ivmethod"><option>Not yet paid</option><option>Bank transfer</option><option>Card</option><option>Cash</option><option>Other</option></select><label>Payment date (optional)</label><input id="ivpaydate" placeholder="YYYY-MM-DD"><button class="primary" onclick="saveInvoice()">Save invoice</button>');
+    var today=MMDate.today();
+    openModal('New Invoice','<label>Recent job</label><select id="ivjob" onchange="fillInvoiceFromJob()">'+jobsOpt+'</select><label>Customer name</label><input id="ivc" value="'+esc(j&&j.customer||'')+'"><label>Customer email</label><input id="ive" type="email" value="'+esc(c.email||'')+'"><label>Invoice number</label><input id="ivn" value="'+v41InvoiceNo(today)+'"><label>Date</label><input id="ivd" value="'+today+'" oninput="ivn.value=v41InvoiceNo(this.value)"><label>Hours</label><input id="ivhours" type="number" step="0.25" value="'+hours+'" oninput="recalcInvoiceLabour()"><label>Labour (£)</label><input id="ivl" value="'+labour.toFixed(2)+'" readonly><label>Parts (£)</label><input id="ivp" value="'+partsTotal.toFixed(2)+'" readonly><label>Travel / call-out (£)</label><input id="ivt" type="number" step="0.01" value="0"><label>Other (£)</label><input id="ivo" type="number" step="0.01" value="0"><label>Payment status</label><select id="ivpaid"><option value="false">Unpaid</option><option value="true">Paid</option></select><label>Payment method</label><select id="ivmethod"><option>Not yet paid</option><option>Bank transfer</option><option>Card</option><option>Cash</option><option>Other</option></select><label>Payment date (optional)</label><input id="ivpaydate" placeholder="DD-MM-YYYY"><button class="primary" onclick="saveInvoice()">Save invoice</button>');
   };
   saveInvoice=function(){
     recalcInvoiceLabour();var jobId=ivjob.value||'',j=db.jobs.find(function(x){return x.id===jobId;})||null,c=(db.customers||[]).find(function(x){return x.name===ivc.value;})||{};
@@ -5250,7 +4972,7 @@ window.cloudCancelRecoveryV4310=function(){
   // Add payment panel to on-screen/printed invoice after existing renderer runs.
   function paymentPanelV41(i){
     var base='margin-top:22px;padding-top:16px;border-top:1px solid #cfcfcf;color:#111;background:#fff;';
-    if(i.paid)return '<div class="invoice-payment-v41" style="'+base+'"><b>PAYMENT</b><div style="margin-top:6px">Paid'+(i.paymentMethod&&i.paymentMethod!=='Not yet paid'?' by '+esc(i.paymentMethod):'')+(i.paymentDate?' on '+esc(i.paymentDate):'')+'.</div></div>';
+    if(i.paid)return '<div class="invoice-payment-v41" style="'+base+'"><b>PAYMENT</b><div style="margin-top:6px">Paid'+(i.paymentMethod&&i.paymentMethod!=='Not yet paid'?' by '+esc(i.paymentMethod):'')+(i.paymentDate?' on '+esc(MMDate.format(i.paymentDate)):'')+'.</div></div>';
     var s=db.settings||{};
     return '<div class="invoice-payment-v41" style="'+base+'"><div style="font-weight:900;font-size:16px;margin-bottom:8px">PAYMENT DETAILS</div>'+
       (s.bankAccountName?'<div>Account name: '+esc(s.bankAccountName)+'</div>':'')+
@@ -5284,7 +5006,7 @@ window.cloudCancelRecoveryV4310=function(){
     i.paid=!i.paid;
     if(i.paid){
       if(!i.paymentMethod || i.paymentMethod==='Not yet paid')i.paymentMethod='Other';
-      if(!i.paymentDate)i.paymentDate=new Date().toISOString().slice(0,10);
+      if(!i.paymentDate)i.paymentDate=MMDate.today();
     }else{
       i.paymentMethod='Not yet paid';
       i.paymentDate='';
@@ -5296,7 +5018,7 @@ window.cloudCancelRecoveryV4310=function(){
     return '<div class="row"><h2>Invoices</h2><button class="primary" onclick="invoiceForm()">＋ New</button></div>'+
       ((db.invoices||[]).slice().reverse().map(function(i){
         return '<div class="card"><div class="row"><b>'+esc(i.number)+'</b><b>'+money(i.total)+'</b></div>'+
-          '<div class="muted">'+esc(i.customer)+' • '+esc(i.date)+(i.jobId?' • linked job':'')+'</div>'+
+          '<div class="muted">'+esc(i.customer)+' • '+esc(MMDate.format(i.date))+(i.jobId?' • linked job':'')+'</div>'+
           '<p>'+(i.paid?'✅ PAID':'⚠️ UNPAID')+'</p><div class="actions">'+
           '<button class="primary" onclick="viewInvoice(\''+i.id+'\',this)">View Invoice</button>'+
           '<button onclick="printShareInvoice(\''+i.id+'\')">Print / Share</button>'+
@@ -5317,4 +5039,6 @@ window.cloudCancelRecoveryV4310=function(){
 <script src="./vendor/jspdf.umd.min.js"></script>
 <script src="./inspection-template.js"></script>
 <script src="./inspections.js"></script>
+<script src="./sync-engine.js"></script>
+<script src="./workshop.js"></script>
 </body></html>
