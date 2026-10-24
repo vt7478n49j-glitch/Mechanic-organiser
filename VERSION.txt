@@ -1,2 +1,2 @@
-Mechanic Mate v44.7
-Colour-coded inspection PDF results and summary; includes category Pass, preview and version label.
+Mechanic Mate v44.8
+Native British English spellcheck for free text; identifiers and technical fields excluded.

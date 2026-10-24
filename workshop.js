@@ -1,7 +1,21 @@
 /* App presentation and the single sync scheduler. No navigation records are rewritten. */
 (()=>{
  'use strict';
- const APP_VERSION='44.7';
+ const APP_VERSION='44.8';
+ // Configure native spelling tools as dynamic forms appear, without changing their values.
+ function spellingField(el){
+ if(!el||!['INPUT','TEXTAREA'].includes(el.tagName))return;
+ const kind=String(el.type||'text').toLowerCase();
+ const identity=[el.id,el.name,el.dataset?.field,el.dataset?.result,el.getAttribute('placeholder'),el.getAttribute('aria-label'),el.previousElementSibling?.tagName==='LABEL'?el.previousElementSibling.textContent:''].filter(Boolean).join(' ').replace(/([a-z])([A-Z])/g,'$1 $2');
+ const codes=/\b(vin|registration|reg|reference|part.?number|sku|code|password|token|url|email|phone|mileage|measurement|date|engine|make|model|template|search)\b/i;
+ const codeIds=/^(jr|jd|jbooked|creg|cv|cp|ce|ivn|ivd|ivpaydate|ivc|ive|qnum|qdate|qreg|qemail|jcmanual|cn|ca|ps|jmake|jmodel|jengine|cmake|cmodel|cengine)$/i;
+ const enabled=(el.tagName==='TEXTAREA'||kind==='text')&&!codes.test(identity)&&!codeIds.test(el.id||'')&&!el.classList.contains('date-safe');
+ el.setAttribute('spellcheck',String(enabled));el.setAttribute('autocorrect',enabled?'on':'off');if(enabled)el.setAttribute('lang','en-GB');
+ }
+ function spellingTree(root){spellingField(root);root?.querySelectorAll?.('input,textarea').forEach(spellingField);}
+ spellingTree(document);
+ document.addEventListener('focusin',event=>spellingField(event.target),true);
+ if(typeof MutationObserver!=='undefined')new MutationObserver(changes=>{for(const change of changes)for(const node of change.addedNodes)spellingTree(node);}).observe(document.body,{childList:true,subtree:true});
  const transport=window.mmCloudTransport;
  const top=document.querySelector('.topbar'),nav=document.getElementById('nav');
  document.body.classList.add('workshop');
