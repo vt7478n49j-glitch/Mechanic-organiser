@@ -1,2 +1,2 @@
-Mechanic Mate v44.3
-Verified migration of primary data to IndexedDB; startup waits for durable storage, sync waits for disk commits, and full records/photos are retained beyond the localStorage size limit.
+Mechanic Mate v44.4
+Dashboard Upcoming Bookings includes only today and future valid booking dates.
