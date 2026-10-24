@@ -1,2 +1,2 @@
-Mechanic Mate v44.2
-Storage-safe sync and conflict resolution, uncached cloud reads, checked-write diagnostics, bounded retries and clearer payment-status choices. Based on v44.1.
+Mechanic Mate v44.3
+Verified migration of primary data to IndexedDB; startup waits for durable storage, sync waits for disk commits, and full records/photos are retained beyond the localStorage size limit.

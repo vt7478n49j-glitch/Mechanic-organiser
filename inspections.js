@@ -14,7 +14,7 @@
  function persist(){
    try{save();saveError='';return true;}catch(e){saveError='Not saved: device storage is full or unavailable. Export a backup and free space, then retry. Keep this page open.';return false;}
  }
- function statusLine(){const n=document.getElementById('inspectionSave');if(n){n.textContent=saveError||'Saved on this device • cloud sync follows your Settings';n.className=saveError?'inspection-alert':'muted';}}
+ function statusLine(){const n=document.getElementById('inspectionSave');if(n){const error=saveError||MMSafeStorage.lastError?.message;n.textContent=error||(MMSafeStorage.pending?'Saving on this device…':'Saved on this device • cloud sync follows your Settings');n.className=error?'inspection-alert':'muted';}}
  function updateProgress(){const i=current();if(!i)return;const st=stats(i),host=document.getElementById('inspectionProgress');if(host)host.innerHTML=progress(i);i.sections.forEach(s=>{const el=document.getElementById('count-'+s.id);if(el){const items=s.items.filter(x=>applicable(x,i));el.textContent=items.filter(x=>result(i,x).reviewed).length+'/'+items.length;}});statusLine();}
  function commit(){const i=current();if(i){i.updatedAt=new Date().toISOString();i.state='Draft';}persist();updateProgress();}
  function progress(i){const s=stats(i);return `<b>${s.done} / ${s.total} applicable checks reviewed</b><progress value="${s.done}" max="${s.total||1}" aria-label="Inspection progress"></progress><small>${statuses.map(k=>`${k}: ${s.counts[k]}`).join(' · ')}. Not Tested counts as reviewed only when explicitly selected.</small>`;}
@@ -82,7 +82,7 @@
  // The existing renderer still controls login recovery and all existing views.
  const previousRender=window.render;window.render=function(){if(busy&&page==='Inspections')return;if(page==='Inspections'){renderHeader();if(!document.getElementById('inspectionNav')){previousRender();}show();}else{app.oninput=null;app.onchange=null;app.onclick=null;previousRender();}if(nav.querySelector('button')&&!document.getElementById('inspectionNav')){const b=document.createElement('button');b.id='inspectionNav';b.textContent='Inspections';b.onclick=()=>go('Inspections');nav.insertBefore(b,nav.lastElementChild);}if(page==='Inspections')nav.querySelectorAll('button').forEach(x=>x.classList.remove('on'));const b=document.getElementById('inspectionNav');if(b)b.classList.toggle('on',page==='Inspections');};
  // Expose pure model operations for regression checks and future template migrations.
- window.MMInspections={stats,result,applicable,pdf,newInspection,get current(){return current();},get busy(){return busy;}};
+ window.MMInspections={refreshSaveStatus:statusLine,stats,result,applicable,pdf,newInspection,get current(){return current();},get busy(){return busy;}};
  window.addEventListener('beforeunload',e=>{if(saveError||busy){e.preventDefault();e.returnValue='';}});
  render();
 })();

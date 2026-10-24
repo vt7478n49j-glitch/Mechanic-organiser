@@ -635,9 +635,9 @@ a{
 <script src="./storage.js"></script>
 </head><body>
 <div class="topbar"><div class="brandtext"><h1>🔧 Mechanic Mate</h1><div class="sub">Private mobile mechanic job manager</div></div><img id="headerLogo" class="app-logo hidden" alt="Company logo"></div><div id="nav" class="nav"></div><main id="app"></main><div id="modal"></div><div id="bookingPickerHost"></div>
-<script>
+<script type="text/mm-app">
 const KEY='mechanic-mate-v2';
-let db=JSON.parse(localStorage.getItem(KEY)||'{}');
+let db=JSON.parse(MMSafeStorage.read(KEY)||'{}');
 db.jobs=Array.isArray(db.jobs)?db.jobs:[];db.customers=Array.isArray(db.customers)?db.customers:[];db.parts=Array.isArray(db.parts)?db.parts:[];db.invoices=Array.isArray(db.invoices)?db.invoices:[];db.quotes=Array.isArray(db.quotes)?db.quotes:[];db.settings=db.settings||{hourlyRate:45,companyName:'',companyLogo:''};if(db.settings.hourlyRate==null)db.settings.hourlyRate=45;if(db.settings.companyName==null)db.settings.companyName='';if(db.settings.companyLogo==null)db.settings.companyLogo='';
 db.jobs.forEach(j=>{if(!Array.isArray(j.partIds))j.partIds=[];if(j.hours==null)j.hours=0});
 db.parts.forEach(p=>{if(p.charge==null)p.charge=Number(p.cost||0)});
@@ -669,7 +669,7 @@ let page='Dashboard';
 
 function mmBackupLocal(reason){
   try{
-    const raw=localStorage.getItem(KEY); if(!raw)return;
+    const raw=MMSafeStorage.read(KEY); if(!raw)return;
     const key='mechanic-mate-backup-'+Date.now();
     localStorage.setItem(key,JSON.stringify({createdAt:new Date().toISOString(),reason:reason||'before-save',data:mmBackupSnapshotV42(JSON.parse(raw))}));
     const keys=[];
@@ -811,7 +811,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 </script><div id="invoicePrintHost" style="display:none"></div>
 
 
-<script>
+<script type="text/mm-app">
 (function(){
   function invoiceById(id){
     return (db.invoices || []).find(function(x){ return x.id === id; });
@@ -975,7 +975,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 </script>
 
 
-<script>
+<script type="text/mm-app">
 (function(){
   // ---------- v17 data migration ----------
   db.settings = db.settings || {};
@@ -1635,7 +1635,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 </script>
 
 
-<script>
+<script type="text/mm-app">
 (function(){
   db.parts = (db.parts || []).map(function(p){
     if (p.partNo == null) p.partNo = '';
@@ -1842,7 +1842,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 </script>
 
 
-<script>
+<script type="text/mm-app">
 (function(){
   // v21 — create a real PDF locally and share it as a file.
   // No server or third-party PDF library required.
@@ -2187,7 +2187,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 </script>
 
 
-<script>
+<script type="text/mm-app">
 (function(){
   // v22 PDF fixes:
   // 1) Embed the saved company logo in the generated PDF.
@@ -2619,7 +2619,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
 </script>
 
 
-<script>
+<script type="text/mm-app">
 (function(){
   const SUPABASE_URL = 'https://ikjtezngfnophhjzjedi.supabase.co';
   const SUPABASE_KEY = 'sb_publishable__Tyf3b3tPIcmdC-JxvUykA_gos5pu9l';
@@ -2964,7 +2964,11 @@ window.cloudCancelRecoveryV4310=function(){
     },
     status:function(s,d){setCloudState(s,d);},
     get:function(){return db;},
-    install:function(data){MMSafeStorage.write(KEY,JSON.stringify(data));db=data;},
+    install:async function(data){
+      var before=JSON.stringify(db);await MMSafeStorage.replace(KEY,JSON.stringify(data));
+      if(JSON.stringify(db)!==before){MMSafeStorage.write(KEY,JSON.stringify(db));await MMSafeStorage.flush();var changed=new Error('New device edits arrived while saving. They were kept and sync will compare again.');changed.name='LocalChangesPending';throw changed;}
+      db=data;
+    },
     acknowledged:function(rev){if(rev)MMSafeStorage.optional(LAST_CLOUD_KEY,rev);},
     recovery:function(){return recoveryActiveV4310;}
   };
@@ -3384,7 +3388,7 @@ window.cloudCancelRecoveryV4310=function(){
 </script>
 
 
-<script>
+<script type="text/mm-app">
 (function(){
   // v24 migration: saved parts now represent purchased stock.
   db.parts = (db.parts || []).map(function(p){
@@ -3626,7 +3630,7 @@ window.cloudCancelRecoveryV4310=function(){
 </script>
 
 
-<script>
+<script type="text/mm-app">
 (function(){
   // v28 fix: stock helpers must exist inside this update's scope.
   function allocatedQtyV28(partId){
@@ -3913,7 +3917,7 @@ window.cloudCancelRecoveryV4310=function(){
 </script>
 
 
-<script>
+<script type="text/mm-app">
 (function(){
   db.quotes = Array.isArray(db.quotes) ? db.quotes : [];
 
@@ -4412,7 +4416,7 @@ window.cloudCancelRecoveryV4310=function(){
 </script>
 
 
-<script>
+<script type="text/mm-app">
 (function(){
   // Migrate old "Open" jobs into the clearer Pending workflow.
   (db.jobs||[]).forEach(function(j){
@@ -4502,7 +4506,7 @@ window.cloudCancelRecoveryV4310=function(){
 })();
 </script>
 
-<script>
+<script type="text/mm-app">
 (function(){
   var STATUS_OPTIONS=['Pending','Booked','In progress','Complete','Invoiced','Paid','Cancelled'];
   window.jobCalendarMonth=window.jobCalendarMonth||MMDate.today().slice(0,7);
@@ -4743,7 +4747,7 @@ window.cloudCancelRecoveryV4310=function(){
 </script>
 
 
-<script>
+<script type="text/mm-app">
 (function(){
   // ---------- v41 helpers ----------
   function v41DateCompact(v){
@@ -5029,9 +5033,10 @@ window.cloudCancelRecoveryV4310=function(){
 })();
 </script>
 
-<script src="./vendor/jspdf.umd.min.js"></script>
-<script src="./inspection-template.js"></script>
-<script src="./inspections.js"></script>
-<script src="./sync-engine.js"></script>
-<script src="./workshop.js"></script>
+<script type="text/mm-app" data-src="./vendor/jspdf.umd.min.js"></script>
+<script type="text/mm-app" data-src="./inspection-template.js"></script>
+<script type="text/mm-app" data-src="./inspections.js"></script>
+<script type="text/mm-app" data-src="./sync-engine.js"></script>
+<script type="text/mm-app" data-src="./workshop.js"></script>
+<script src="./bootstrap.js"></script>
 </body></html>

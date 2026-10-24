@@ -30,7 +30,7 @@
    constructor(adapter){this.a=adapter;this.running=null;this.timer=null;this.retry=0;this.account='';this.base=null;this.conflicts=[];this.resolutionContext=null;this.lastVerified='';this.wantsRun=false;this.status='Saved on device';this.blocked=false;this.reviewing=false;this.lastDiagnostic=null;this.contention=0;}
    state(status,detail=''){this.status=status;this.a.status(status,detail);}
    schedule(delay=700){clearTimeout(this.timer);this.timer=setTimeout(()=>{this.timer=null;this.run();},delay);}
-   changed(){this.retry=0;if(!this.blocked)this.state(this.a.online()?'Saved on device':'Offline — saved on device');this.schedule();}
+   changed(){this.retry=0;if(!this.blocked)this.state(this.a.saving?.()?'Saving on device…':this.a.online()?'Saved on device':'Offline — saved on device');this.schedule();}
    async accountReady(){const uid=await this.a.account();if(uid!==this.account){const loaded=uid?await this.a.loadBase(uid):null;this.account=uid||'';this.base=loaded;this.conflicts=[];this.resolutionContext=null;this.lastVerified='';}return this.account;}
    failure(e){
      if(e.name==='QuotaExceededError'||e.name==='SecurityError'||/quota|storage.{0,30}(full|unavailable|space)/i.test(e.message||'')){
@@ -40,8 +40,9 @@
      this.state('Sync failed — retrying',e.message||String(e));this.retry=Math.min(this.retry+1,6);this.schedule(Math.min(60000,1000*2**this.retry));return false;
    }
    run(){if(this.blocked)return Promise.resolve(false);if(this.running){this.wantsRun=true;return this.running;}this.running=this.cycle().catch(e=>this.failure(e)).finally(()=>{this.running=null;if(this.wantsRun){this.wantsRun=false;if(!this.blocked)this.schedule(400);}});return this.running;}
-   retryNow(){this.blocked=false;this.contention=0;this.lastDiagnostic=null;return this.run();}
+   retryNow(){this.blocked=false;this.contention=0;this.lastDiagnostic=null;return Promise.resolve(this.a.retry?.()).then(()=>this.run()).catch(e=>this.failure(e));}
    async cycle(){
+     if(this.a.ready)await this.a.ready();
      if(!this.a.online()){this.state('Offline — saved on device');return false;}
      if(!await this.accountReady()){this.state('Saved on device — not signed in');return false;}
      if(this.reviewing&&this.conflicts.length){this.state('Review changes','Your choices are open. Both copies are kept until you apply them.');return false;}
@@ -109,6 +110,7 @@
      if(!this.resolutionContext)return this.run();
      const c=this.resolutionContext,latest=copy(this.a.get());
      if(!equal(latest,c.local)){this.state('Review changes','The device changed during review. Refreshing the comparison.');return this.run();}
+     if(this.a.retry){try{await this.a.retry();}catch(e){this.failure(e);throw e;}}
      const fresh=await this.a.read();
      if(!equal(fresh?.data,c.remote)||!equal(this.a.get(),latest))throw new Error('One copy changed while these choices were open. Close this review, tap Sync now, and reopen it to compare the current values. No choices have been applied.');
      const joined=merge(c.base,latest,c.remote,choices);if(joined.conflicts.length)throw Error('Choose a version for every conflicting field.');
