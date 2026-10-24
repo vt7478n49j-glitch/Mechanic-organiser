@@ -1,7 +1,7 @@
 /* App presentation and the single sync scheduler. No navigation records are rewritten. */
 (()=>{
  'use strict';
- const APP_VERSION='44.6';
+ const APP_VERSION='44.7';
  const transport=window.mmCloudTransport;
  const top=document.querySelector('.topbar'),nav=document.getElementById('nav');
  document.body.classList.add('workshop');
