@@ -1,7 +1,7 @@
 /* App presentation and the single sync scheduler. No navigation records are rewritten. */
 (()=>{
  'use strict';
- const APP_VERSION='44.10';
+ const APP_VERSION='44.11';
  // Configure native spelling tools as dynamic forms appear, without changing their values.
  function spellingField(el){
  if(!el||!['INPUT','TEXTAREA'].includes(el.tagName))return;

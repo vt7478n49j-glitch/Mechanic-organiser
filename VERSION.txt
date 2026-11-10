@@ -1,2 +1,2 @@
-Mechanic Mate v44.10
-Vehicle history by registration and parts order tracking for jobs.
+Mechanic Mate v44.11
+Finish jobs, record payment and share paid invoices from the job card.
