@@ -1,2 +1,2 @@
-Mechanic Mate v44.9
-Supplier discount codes, weekly and monthly dashboard history, and job mileage on invoices.
+Mechanic Mate v44.10
+Vehicle history by registration and parts order tracking for jobs.

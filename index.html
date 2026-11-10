@@ -736,6 +736,8 @@ function save(){
   MMSafeStorage.optional('mechanic-mate-local-updated-at',new Date().toISOString());
   if(window.cloudScheduleSave)window.cloudScheduleSave();
 }const money=n=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP'}).format(Number(n)||0);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const gid=()=>crypto.randomUUID();
+const jobPartsStatuses=['','To order','Ordered','Ready'];
+const registrationKey=value=>String(value||'').toUpperCase().replace(/\s+/g,'');
 function invoiceMileage(i){
   const job=db.jobs.find(j=>j.id===i.jobId);
   const mileage=i.mileage??job?.mileage??i.deletedJobSnapshot?.mileage;
@@ -2218,7 +2220,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     var j = (db.jobs || []).find(function(x){ return x.id === i.jobId; }) || {};
     var c = (db.customers || []).find(function(x){ return x.name === i.customer; }) || {};
     return {
-      reg: j.reg || c.reg || c.vehicle || '',
+      reg: i.vehicle?.reg || i.deletedJobSnapshot?.reg || j.reg || c.reg || c.vehicle || '',
       make: j.make || c.make || '',
       model: j.model || c.model || '',
       engineSize: j.engineSize || c.engineSize || '',
@@ -3862,7 +3864,7 @@ window.cloudCancelRecoveryV4310=function(){
   }
   function v27Vehicle(i){
     var j=(db.jobs||[]).find(function(x){return x.id===i.jobId;})||{},snap=i.deletedJobSnapshot||i.vehicle||{},c=(db.customers||[]).find(function(x){return x.name===i.customer;})||{};
-    return {reg:j.reg||snap.reg||c.reg||c.vehicle||'',make:j.make||snap.make||c.make||'',model:j.model||snap.model||c.model||'',engineSize:j.engineSize||snap.engineSize||c.engineSize||'',title:j.title||snap.title||''};
+    return {reg:i.vehicle?.reg||i.deletedJobSnapshot?.reg||j.reg||c.reg||c.vehicle||'',make:j.make||snap.make||c.make||'',model:j.model||snap.model||c.model||'',engineSize:j.engineSize||snap.engineSize||c.engineSize||'',title:j.title||snap.title||''};
   }
 
   function invoiceHtmlV27(i){
@@ -4438,12 +4440,54 @@ window.cloudCancelRecoveryV4310=function(){
     save();closeM();render();
   };
 
+
+  var selectedVehicleReg='';
+  window.showVehicleHistory=function(reg){
+    selectedVehicleReg=registrationKey(reg);
+    go('Vehicles');
+  };
+
+  function vehicleHistory(){
+    var records=new Map(),jobs=new Map(db.jobs.map(function(j){return [j.id,j];}));
+    function add(reg,entry){
+      var key=registrationKey(reg);
+      if(!key)return;
+      if(!records.has(key))records.set(key,{reg:reg,entries:[]});
+      records.get(key).entries.push(entry);
+    }
+    db.jobs.forEach(function(j){
+      add(j.reg,{id:j.id,type:'Job',title:j.title||'Untitled job',date:MMDate.iso(j.bookedFor)||MMDate.iso(j.date),
+        customer:j.customer,mileage:j.mileage==null?'':new Intl.NumberFormat('en-GB').format(j.mileage)+' miles',status:j.status});
+    });
+    db.invoices.forEach(function(i){
+      var job=jobs.get(i.jobId);
+      add(i.vehicle?.reg||i.deletedJobSnapshot?.reg||job?.reg,{id:i.id,type:'Invoice',title:i.number||'Invoice',
+        date:MMDate.iso(i.date),customer:i.customer,mileage:invoiceMileage(i),status:money(i.total)});
+    });
+    var current=records.get(selectedVehicleReg);
+    var options=Array.from(records.keys()).sort().map(function(key){
+      return '<option value="'+esc(records.get(key).reg)+'"></option>';
+    }).join('');
+    var entries=current?current.entries.sort(function(a,b){return (b.date||'').localeCompare(a.date||'');}):[];
+    return '<h2>Vehicle history</h2><form class="card" onsubmit="showVehicleHistory(this.elements.vehicleReg.value);return false;">'+
+      '<label for="vehicleReg">Vehicle registration</label><input id="vehicleReg" name="vehicleReg" list="vehicleRegistrations" autocomplete="off" autocapitalize="characters" required value="'+esc(current?.reg||selectedVehicleReg)+'">'+
+      '<datalist id="vehicleRegistrations">'+options+'</datalist><button class="primary" type="submit">Find history</button></form>'+
+      (current?'<h2>'+esc(current.reg)+'</h2>'+entries.map(function(entry){
+        var id=esc(JSON.stringify(entry.id));
+        var button=entry.type==='Job'?'jobForm('+id+')':'viewInvoice('+id+',this)';
+        return '<div class="card"><div class="row wrap"><b>'+entry.type+' · '+esc(entry.title)+'</b>'+
+          '<span class="muted">'+esc(MMDate.format(entry.date)||'Date unavailable')+'</span></div>'+
+          '<div class="muted">'+[entry.customer,entry.mileage,entry.status].filter(Boolean).map(esc).join(' · ')+'</div>'+
+          '<div class="actions"><button onclick="'+button+'">Open '+entry.type.toLowerCase()+'</button></div></div>';
+      }).join(''):'<div class="empty">'+(selectedVehicleReg?'No jobs or invoices found for this registration.':'Enter a registration to see its jobs and invoices.')+'</div>');
+  }
+
   // ----- integrate nav/dashboard -----
   window.render=function(){
     renderHeader();
-    var tabs=['Dashboard','Jobs','Quotes','Customers','Parts','Suppliers','Invoices','Settings'];
+    var tabs=['Dashboard','Jobs','Quotes','Customers','Vehicles','Parts','Suppliers','Invoices','Settings'];
     nav.innerHTML=tabs.map(function(x){return '<button class="'+(page===x?'on':'')+'" onclick="go(\''+x+'\')">'+x+'</button>';}).join('');
-    var views={Dashboard:dash,Jobs:jobs,Quotes:quotes,Customers:customers,Parts:parts,Suppliers:supplierDiscounts,Invoices:invoices,Settings:settings};
+    var views={Dashboard:dash,Jobs:jobs,Quotes:quotes,Customers:customers,Vehicles:vehicleHistory,Parts:parts,Suppliers:supplierDiscounts,Invoices:invoices,Settings:settings};
     var fn=views[page]||dash;
     app.innerHTML=fn();
   };
@@ -4628,14 +4672,17 @@ window.cloudCancelRecoveryV4310=function(){
     var lab=Number(j.hours||0)*Number((db.settings||{}).hourlyRate||0);
     var ready=needsInvoiceV35(j);
     var colour=jobColourV4310(shownStatusV35(j));
+    var reg=esc(JSON.stringify(j.reg||''));
     return '<div class="card job-status-card job-status-'+colour+'">'+
       '<div class="row wrap"><b>'+esc(j.title||'Untitled job')+'</b><span class="pill job-status-pill">'+esc(shownStatusV35(j))+'</span></div>'+
       '<div class="muted">'+esc(j.customer||'No customer')+' • '+esc(j.reg||'No reg')+' • Created '+esc(MMDate.format(j.date||''))+'</div>'+
       (j.bookedFor?'<div class="booked-date '+(j.bookedFor<MMDate.today()?'past-booking':'')+'">'+(j.bookedFor<MMDate.today()?'Past booking: ':'📅 Booked: ')+esc(formatDateV35(j.bookedFor))+'</div>':(j.status==='Booked'?'<div class="muted">📅 Booked — no appointment date set</div>':''))+
       (j.mileage!=null?'<div class="muted">Mileage: '+esc(new Intl.NumberFormat('en-GB').format(j.mileage))+' miles</div>':'')+
+      (j.partsStatus?'<div class="muted">Parts: '+esc(j.partsStatus)+'</div>':'')+
       (j.hours?'<div class="muted">'+esc(j.hours)+'h labour = '+money(lab)+'</div>':'')+
       (ps.length?'<div class="muted">'+ps.length+' linked part'+(ps.length===1?'':'s')+'</div>':'')+
       '<div class="actions"><button onclick="jobForm(\''+j.id+'\')">Open</button><select class="quick-status" aria-label="Change job status" onchange="quickJobStatusV35(\''+j.id+'\',this.value)">'+statusOptionsV35(j.status||'Pending')+'</select><button class="primary" onclick="jobPartsMenu(\''+j.id+'\')">＋ Parts</button>'+
+      (registrationKey(j.reg)?'<button onclick="showVehicleHistory('+reg+')">Vehicle history</button>':'')+
       '<button class="danger" onclick="deleteJobV32(\''+j.id+'\')">Delete</button>'+(ready?'<button class="primary" onclick="invoiceForm(\''+j.id+'\')">Invoice Now</button>':(j.status!=='Paid'&&j.status!=='Cancelled'?'<button onclick="invoiceForm(\''+j.id+'\')">Invoice</button>':''))+'</div></div>';
   }
 
@@ -4836,10 +4883,29 @@ window.cloudCancelRecoveryV4310=function(){
       (undated?' Invoices without a valid date: '+undated+'.':'')+'</p></div>';
   }
 
+  function outstandingParts(){
+    var active=['Pending','Booked','In progress'];
+    var waiting=db.jobs.filter(function(j){
+      return active.includes(j.status||'Pending')&&(j.partsStatus==='To order'||j.partsStatus==='Ordered');
+    }).sort(function(a,b){
+      return (MMDate.iso(a.bookedFor)||'9999-99-99').localeCompare(MMDate.iso(b.bookedFor)||'9999-99-99');
+    });
+    return '<div class="card"><h2>Outstanding parts</h2>'+
+      (waiting.map(function(j){
+        var id=esc(JSON.stringify(j.id));
+        return '<div class="partline"><div class="row wrap"><b>'+esc(j.title||'Untitled job')+'</b>'+
+          '<span class="pill">'+esc(j.partsStatus)+'</span></div>'+
+          '<div class="muted">'+[j.reg,j.customer,j.bookedFor?'Booked '+MMDate.format(j.bookedFor):'No booking date'].filter(Boolean).map(esc).join(' · ')+'</div>'+
+          (j.partsOrderNote?'<p style="white-space:pre-wrap;overflow-wrap:anywhere">'+esc(j.partsOrderNote)+'</p>':'')+
+          '<div class="actions"><button onclick="jobForm('+id+')">Open job</button></div></div>';
+      }).join('')||'<div class="muted">No active jobs with parts to order or waiting to arrive.</div>')+'</div>';
+  }
+
   window.dash=function(){
     var ready=(db.jobs||[]).filter(needsInvoiceV35),pending=(db.jobs||[]).filter(function(j){return j.status==='Pending';});
     var upcoming=(db.jobs||[]).filter(function(j){return j.status==='Booked'&&MMDate.iso(j.bookedFor)&&j.bookedFor>=MMDate.today();}).sort(function(a,b){return a.bookedFor.localeCompare(b.bookedFor);});
     return financeDashboard()+'<div class="grid"><div class="card stat">Jobs<b>'+db.jobs.length+'</b></div><div class="card stat">Customers<b>'+db.customers.length+'</b></div><div class="card stat">Ready to Invoice<b>'+ready.length+'</b></div><div class="card stat">Booked<b>'+upcoming.length+'</b></div></div><div class="actions"><button class="primary" onclick="jobForm()">＋ New Job</button><button class="primary" onclick="quoteForm()">＋ Quote</button><button onclick="invoiceForm()">＋ Invoice</button></div>'+
+      outstandingParts()+
       (upcoming.length?'<div class="card"><div class="row"><b>Upcoming Bookings</b><button onclick="setJobFilterV34(\'Booked\');go(\'Jobs\')">Calendar</button></div>'+upcoming.slice(0,4).map(function(j){return '<div class="partline"><b>'+esc(formatDateV35(j.bookedFor))+'</b><div class="muted">'+esc(j.reg||'No reg')+' • '+esc(j.title||'Job')+'</div></div>';}).join('')+'</div>':'')+
       (ready.length?'<div class="card attention-card"><div class="row"><b class="attention-title">Ready to Invoice</b><button onclick="setJobFilterV34(\'Ready to Invoice\');go(\'Jobs\')">View all</button></div>'+ready.slice().reverse().map(cardV35).join('')+'</div>':'')+
       (pending.length?'<div class="card"><div class="row"><b>Pending Jobs</b><button onclick="setJobFilterV34(\'Pending\');go(\'Jobs\')">View all</button></div>'+pending.slice().reverse().slice(0,3).map(cardV35).join('')+'</div>':'')+
@@ -5006,6 +5072,10 @@ window.cloudCancelRecoveryV4310=function(){
       '<label>General comments / work carried out</label><textarea id="jn">'+esc(j.notes||'')+'</textarea>'+
       '<div id="diagnosticV41" class="card" style="display:none"><b>Diagnostic outcome</b><label>Outcome</label><select id="jdiagOutcome"><option>Fault found</option><option>Further diagnostics required</option><option>No fault found at time of test</option><option>Repair / parts recommended</option></select><label>Findings / comments</label><textarea id="jfindings">'+esc(j.findings||'')+'</textarea><label>Recommended parts / further work</label><textarea id="jrecommend">'+esc(j.recommendations||'')+'</textarea></div>'+
       '<div id="inspectionV41" style="display:none"><div class="row"><b>Inspection checklist</b><button type="button" onclick="addInspectionItemV41()">＋ Add item</button></div><div id="inspectionRowsV41">'+inspection+'</div></div>'+
+      '<label for="jpartsStatus">Parts status</label><select id="jpartsStatus">'+jobPartsStatuses.map(function(status){
+        return '<option value="'+status+'" '+(status===(j.partsStatus||'')?'selected':'')+'>'+(status||'Not tracked')+'</option>';
+      }).join('')+'</select>'+
+      '<label for="jpartsOrderNote">Parts order notes (optional)</label><textarea id="jpartsOrderNote" placeholder="Part needed, supplier or collection details">'+esc(j.partsOrderNote||'')+'</textarea>'+
       linked+
       (id?'<div class="card"><b>Job photos / evidence</b><p class="muted">Choose photos, check they appear below, then tap Save job. Photos are compressed before saving.</p><label>Category</label><select id="photoCategoryV41"><option>Before</option><option>Removed part</option><option>After</option><option>Fault found</option><option>Other</option></select><label>Photo note</label><input id="photoNoteV41"><input type="file" accept="image/*" multiple onchange="addJobPhotosV41(\''+id+'\',this)"><div style="margin-top:12px"><b>Saved photos</b>'+photoCardsV41(j)+'</div><div style="margin-top:12px"><b>New photos to save</b><div id="photoPreviewV41"><div class="muted">No new photos selected.</div></div></div></div>':'<div class="muted">Save the job once, then reopen it to add photos.</div>')+
       '<button class="primary" onclick="saveJob(\''+(id||'')+'\')">Save job</button>');
@@ -5046,7 +5116,7 @@ window.cloudCancelRecoveryV4310=function(){
         return;
       }
     }
-    var x={...old,id:jobId,title:val('jt'),jobType:val('jtype')||'Repair / Service',customer:val('jcmanual'),reg:val('jr'),make:val('jmake'),model:val('jmodel'),engineSize:val('jengine'),mileage:mileage===''?null:Number(mileage),date:createdIso,bookedFor:booked,status:val('js')||'Pending',location:val('jl'),notes:val('jn'),hours:Number(val('jh')||0),partIds:old.partIds||[],partQuantities:old.partQuantities||{},photos:(old.photos||[]).concat(prepared),diagOutcome:val('jdiagOutcome'),findings:val('jfindings'),recommendations:val('jrecommend'),inspectionItems:items};
+    var x={...old,id:jobId,title:val('jt'),jobType:val('jtype')||'Repair / Service',customer:val('jcmanual'),reg:val('jr'),make:val('jmake'),model:val('jmodel'),engineSize:val('jengine'),mileage:mileage===''?null:Number(mileage),partsStatus:val('jpartsStatus'),partsOrderNote:val('jpartsOrderNote').trim(),date:createdIso,bookedFor:booked,status:val('js')||'Pending',location:val('jl'),notes:val('jn'),hours:Number(val('jh')||0),partIds:old.partIds||[],partQuantities:old.partQuantities||{},photos:(old.photos||[]).concat(prepared),diagOutcome:val('jdiagOutcome'),findings:val('jfindings'),recommendations:val('jrecommend'),inspectionItems:items};
     var i=db.jobs.findIndex(function(y){return y.id===x.id;});if(i<0)db.jobs.push(x);else db.jobs[i]=x;
     try{
       save();
@@ -5073,7 +5143,7 @@ window.cloudCancelRecoveryV4310=function(){
     recalcInvoiceLabour();var jobId=ivjob.value||'',j=db.jobs.find(function(x){return x.id===jobId;})||null,c=(db.customers||[]).find(function(x){return x.name===ivc.value;})||{};
     var partLines=(typeof invoicePartSnapshot==='function')?invoicePartSnapshot(j):[],partTotal=partLines.reduce(function(a,x){return a+Number(x.total||0);},0);
     var total=Number(ivl.value||0)+partTotal+Number(ivt.value||0)+Number(ivo.value||0),isPaid=ivpaid.value==='true';
-    db.invoices.push({id:gid(),number:ivn.value,customer:ivc.value,customerId:c.id||'',email:ive.value,billedTo:{name:ivc.value,phone:c.phone||'',email:ive.value||c.email||'',address:c.address||''},date:ivd.value,jobId:jobId,mileage:j?.mileage??null,hours:Number(ivhours.value||0),labour:Number(ivl.value||0),partLines:partLines,parts:partTotal,travel:Number(ivt.value||0),other:Number(ivo.value||0),total:total,paid:isPaid,paymentMethod:ivmethod.value,paymentDate:ivpaydate.value});
+    db.invoices.push({id:gid(),number:ivn.value,customer:ivc.value,customerId:c.id||'',email:ive.value,billedTo:{name:ivc.value,phone:c.phone||'',email:ive.value||c.email||'',address:c.address||''},date:ivd.value,jobId:jobId,mileage:j?.mileage??null,vehicle:{reg:j?.reg||''},hours:Number(ivhours.value||0),labour:Number(ivl.value||0),partLines:partLines,parts:partTotal,travel:Number(ivt.value||0),other:Number(ivo.value||0),total:total,paid:isPaid,paymentMethod:ivmethod.value,paymentDate:ivpaydate.value});
     if(j)j.hours=Number(ivhours.value||0);if(typeof syncJobPaymentStatus==='function')syncJobPaymentStatus(jobId);save();closeM();render();
   };
 

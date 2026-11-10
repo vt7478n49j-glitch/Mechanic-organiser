@@ -1,14 +1,14 @@
 /* App presentation and the single sync scheduler. No navigation records are rewritten. */
 (()=>{
  'use strict';
- const APP_VERSION='44.9';
+ const APP_VERSION='44.10';
  // Configure native spelling tools as dynamic forms appear, without changing their values.
  function spellingField(el){
  if(!el||!['INPUT','TEXTAREA'].includes(el.tagName))return;
  const kind=String(el.type||'text').toLowerCase();
  const identity=[el.id,el.name,el.dataset?.field,el.dataset?.result,el.getAttribute('placeholder'),el.getAttribute('aria-label'),el.previousElementSibling?.tagName==='LABEL'?el.previousElementSibling.textContent:''].filter(Boolean).join(' ').replace(/([a-z])([A-Z])/g,'$1 $2');
  const codes=/\b(vin|registration|reg|reference|part.?number|sku|code|password|token|url|email|phone|mileage|measurement|date|engine|make|model|template|search)\b/i;
- const codeIds=/^(jr|jd|jbooked|creg|cv|cp|ce|ivn|ivd|ivpaydate|ivc|ive|qnum|qdate|qreg|qemail|jcmanual|cn|ca|ps|jmake|jmodel|jengine|cmake|cmodel|cengine)$/i;
+ const codeIds=/^(jr|jd|jbooked|creg|cv|cp|ce|ivn|ivd|ivpaydate|ivc|ive|qnum|qdate|qreg|qemail|jcmanual|cn|ca|ps|jmake|jmodel|jengine|vehicleReg|cmake|cmodel|cengine)$/i;
  const enabled=(el.tagName==='TEXTAREA'||kind==='text')&&!codes.test(identity)&&!codeIds.test(el.id||'')&&!el.classList.contains('date-safe');
  el.setAttribute('spellcheck',String(enabled));el.setAttribute('autocorrect',enabled?'on':'off');if(enabled)el.setAttribute('lang','en-GB');
  }
@@ -49,7 +49,7 @@
  const oldOpen=openModal;window.openModal=function(...args){oldOpen(...args);for(const id of dateIds){const input=document.getElementById(id);if(input){input.value=MMDate.format(input.value);input.placeholder='DD-MM-YYYY';input.inputMode='numeric';}}};
  function saveDates(fn,ids){return function(...args){const inputs=ids.map(id=>document.getElementById(id)).filter(Boolean),values=[];for(const input of inputs){const parsed=MMDate.iso(input.value);if(parsed===null||(!parsed&&!['jbooked','ivpaydate'].includes(input.id))){alert('Enter a valid '+(input.id==='ivpaydate'?'payment date':'date')+' as DD-MM-YYYY.');input.focus();return;}values.push(parsed);}inputs.forEach((input,n)=>input.value=values[n]);const restore=()=>inputs.forEach(input=>{if(input.isConnected)input.value=MMDate.format(input.value);});try{const result=fn(...args);if(result&&typeof result.then==='function')return result.finally(restore);restore();return result;}catch(e){restore();throw e;}};}
  window.saveJob=saveDates(window.saveJob,['jd','jbooked']);window.saveInvoice=saveDates(window.saveInvoice,['ivd','ivpaydate']);window.saveQuote=saveDates(window.saveQuote,['qdate']);
- const icons={Dashboard:'▦',Jobs:'⚒',Quotes:'▤',Customers:'♙',Parts:'▣',Suppliers:'◇',Invoices:'▧',Inspections:'✓',Settings:'⚙'};
+ const icons={Dashboard:'▦',Jobs:'⚒',Quotes:'▤',Customers:'♙',Vehicles:'▱',Parts:'▣',Suppliers:'◇',Invoices:'▧',Inspections:'✓',Settings:'⚙'};
  function decorate(){for(const button of nav.querySelectorAll('button')){const label=button.dataset.label||button.textContent.trim();if(icons[label]){button.dataset.label=label;button.innerHTML='<span aria-hidden="true" class="nav-symbol">'+icons[label]+'</span><span>'+esc(label)+'</span>';button.setAttribute('aria-current',button.classList.contains('on')?'page':'false');}}if(page==='Settings'&&!transport.recovery()){const card=document.querySelector('.cloud-card');if(card&&!document.getElementById('runningAppVersion')){const version=document.createElement('p');version.id='runningAppVersion';version.textContent='Running on this device: Mechanic Mate v'+APP_VERSION;card.insertBefore(version,card.children[1]||null);}if(card&&!document.getElementById('workshopSyncStatus')){const p=document.createElement('p');p.id='workshopSyncStatus';p.setAttribute('role','status');card.insertBefore(p,card.children[1]||null);}}refreshSyncUI();}
  const oldRender=window.render;window.render=function(){oldRender();decorate();};
  const oldClose=window.closeM;window.closeM=function(){engine.reviewing=false;oldClose();engine.schedule(500);};
