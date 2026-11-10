@@ -25,7 +25,7 @@
    }
    return {data:visit(base,local,remote,[]),conflicts};
  }
- function useful(d){return ['jobs','customers','parts','invoices','quotes','inspections'].some(k=>d[k]?.length)||!!(d.settings&&(d.settings.companyName||d.settings.companyLogo||d.settings.companyPhone||d.settings.companyEmail));}
+ function useful(d){return ['jobs','customers','parts','invoices','quotes','inspections','suppliers'].some(k=>d[k]?.length)||!!(d.settings&&(d.settings.companyName||d.settings.companyLogo||d.settings.companyPhone||d.settings.companyEmail));}
  class Engine{
    constructor(adapter){this.a=adapter;this.running=null;this.timer=null;this.retry=0;this.account='';this.base=null;this.conflicts=[];this.resolutionContext=null;this.lastVerified='';this.wantsRun=false;this.status='Saved on device';this.blocked=false;this.reviewing=false;this.lastDiagnostic=null;this.contention=0;}
    state(status,detail=''){this.status=status;this.a.status(status,detail);}

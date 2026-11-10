@@ -736,6 +736,11 @@ function save(){
   MMSafeStorage.optional('mechanic-mate-local-updated-at',new Date().toISOString());
   if(window.cloudScheduleSave)window.cloudScheduleSave();
 }const money=n=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP'}).format(Number(n)||0);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const gid=()=>crypto.randomUUID();
+function invoiceMileage(i){
+  const job=db.jobs.find(j=>j.id===i.jobId);
+  const mileage=i.mileage??job?.mileage??i.deletedJobSnapshot?.mileage;
+  return mileage==null?'':new Intl.NumberFormat('en-GB').format(mileage)+' miles';
+}
 const jobLabel=j=>`${j.title||'Untitled'}${j.reg?' • '+j.reg:''}${j.customer?' • '+j.customer:''}`;
 function go(p){page=p;render()}function renderHeader(){const img=document.getElementById('headerLogo');if(db.settings.companyLogo){img.src=db.settings.companyLogo;img.classList.remove('hidden')}else{img.removeAttribute('src');img.classList.add('hidden')}}function render(){renderHeader();nav.innerHTML=['Dashboard','Jobs','Customers','Parts','Invoices','Settings'].map(x=>`<button class="${page===x?'on':''}" onclick="go('${x}')">${x}</button>`).join('');app.innerHTML=({Dashboard:dash,Jobs:jobs,Customers:customers,Parts:parts,Invoices:invoices,Settings:settings}[page])()}
 function dash(){const rev=db.invoices.reduce((a,x)=>a+Number(x.total||0),0),cost=db.parts.reduce((a,x)=>a+Number(x.cost||0),0);return `<div class="grid"><div class="card stat">Jobs<b>${db.jobs.length}</b></div><div class="card stat">Customers<b>${db.customers.length}</b></div><div class="card stat">Invoiced<b>${money(rev)}</b></div><div class="card stat">Profit*<b>${money(rev-cost)}</b></div></div><div class="actions"><button class="primary" onclick="jobForm()">＋ New Job</button><button onclick="invoiceForm()">＋ Invoice</button></div><div class="card"><b>Recent jobs</b>${db.jobs.slice().reverse().slice(0,5).map(jobCard).join('')||'<div class="empty">No jobs yet.</div>'}</div><p class="muted">*Invoices minus recorded parts costs.</p>`}
@@ -1611,6 +1616,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
           make:j.make||'',
           model:j.model||'',
           engineSize:j.engineSize||'',
+          mileage:j.mileage??null,
           customer:j.customer||''
         };
       }
@@ -2411,6 +2417,8 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.se
     if (vehicle.reg) { text(left, y, 10, 'Registration: ' + vehicle.reg, false); y -= 15; }
     var vdesc = [vehicle.make, vehicle.model, vehicle.engineSize].filter(Boolean).join(' ');
     if (vdesc) wrapped(left, vdesc, 10, 58, false, 15);
+    var mileage=invoiceMileage(i);
+    if (mileage) wrapped(left, 'Mileage: '+mileage, 10, 58, false, 15);
     if (vehicle.title) wrapped(left, 'Job: ' + vehicle.title, 10, 58, false, 15);
     y -= 10;
 
@@ -2822,6 +2830,7 @@ window.cloudCancelRecoveryV4310=function(){
       (db.invoices && db.invoices.length) ||
       (db.quotes && db.quotes.length) ||
       (db.inspections && db.inspections.length) ||
+      (db.suppliers && db.suppliers.length) ||
       (db.settings && (db.settings.companyName || db.settings.companyLogo || db.settings.companyPhone || db.settings.companyEmail))
     );
   }
@@ -3801,6 +3810,7 @@ window.cloudCancelRecoveryV4310=function(){
         name:line.name,
         partNo:line.partNo||'',
         includedParts:(line.includedParts||[]).map(function(x){return {...x};}),
+        unitCost:line.cost,
         qty:line.qty,
         unitPrice:line.unitPrice,
         total:line.total
@@ -3872,13 +3882,14 @@ window.cloudCancelRecoveryV4310=function(){
     if(!rows&&partsSubtotal)rows='<tr><td>Parts</td><td></td><td>1</td><td>'+money(partsSubtotal)+'</td><td>'+money(partsSubtotal)+'</td></tr>';
     var contact=[s.companyPhone,s.companyEmail].filter(Boolean).map(esc).join('<br>');
     var vb=[vehicle.make,vehicle.model,vehicle.engineSize].filter(Boolean).map(esc).join(' • ');
+    var mileage=invoiceMileage(i);
 
     return '<div class="inline-invoice"><div class="inv-head"><div>' +
       (logo?'<img class="inv-logo" src="'+logo+'" alt="Company logo">':'') +
       '<div style="font-weight:900;font-size:20px">'+esc(company)+'</div>'+(contact?'<div class="invoice-contact">'+contact+'</div>':'') +
       '</div><div style="text-align:right"><div class="inv-title">INVOICE</div><div class="inv-meta">'+esc(i.number||'')+'<br>'+esc(MMDate.format(i.date||''))+'</div><div style="margin-top:7px;font-weight:900">'+(i.paid?'PAID':'UNPAID')+'</div></div></div>' +
       '<div class="bill-grid"><div class="bill-box"><b>BILLED TO</b><br>'+esc(cust.name)+(cust.address?'<br>'+esc(cust.address).replace(/\n/g,'<br>'):'')+(cust.phone?'<br>'+esc(cust.phone):'')+(cust.email?'<br>'+esc(cust.email):'')+'</div>' +
-      '<div class="bill-box"><b>VEHICLE / JOB</b><br>'+(vehicle.reg?'Registration: '+esc(vehicle.reg)+'<br>':'')+(vb?vb+'<br>':'')+(vehicle.title?'Job: '+esc(vehicle.title):'')+'</div></div>' +
+      '<div class="bill-box"><b>VEHICLE / JOB</b><br>'+(vehicle.reg?'Registration: '+esc(vehicle.reg)+'<br>':'')+(vb?vb+'<br>':'')+(mileage?'Mileage: '+esc(mileage)+'<br>':'')+(vehicle.title?'Job: '+esc(vehicle.title):'')+'</div></div>' +
       (Number(i.labour||0)?'<table><tbody><tr><td><b>Labour</b>'+(i.hours?' — '+esc(i.hours)+' hours @ '+money(db.settings.hourlyRate||0)+'/hr':'')+'</td><td style="text-align:right"><b>'+money(i.labour)+'</b></td></tr></tbody></table>':'') +
       (rows?'<div style="margin-top:18px;font-weight:900">PARTS USED</div><table class="parts-table parts-table-v20"><thead><tr><th>Part</th><th>Part No.</th><th>Qty</th><th>Each</th><th>Total</th></tr></thead><tbody>'+rows+'<tr class="parts-subtotal"><td colspan="4">Parts subtotal</td><td>'+money(partsSubtotal)+'</td></tr></tbody></table>':'') +
       ((Number(i.travel||0)||Number(i.other||0))?'<table><tbody>'+(Number(i.travel||0)?'<tr><td>Travel / call-out</td><td>'+money(i.travel)+'</td></tr>':'')+(Number(i.other||0)?'<tr><td>'+esc(i.inspectionId?(i.notes||'Vehicle inspection'):'Other')+'</td><td>'+money(i.other)+'</td></tr>':'')+'</tbody></table>':'') +
@@ -4391,12 +4402,48 @@ window.cloudCancelRecoveryV4310=function(){
     }
   };
 
+
+  function supplierDiscounts(){
+    var records=Array.isArray(db.suppliers)?db.suppliers:[];
+    return '<div class="row"><h2>Suppliers</h2><button class="primary" onclick="supplierDiscountForm()">＋ Add supplier</button></div>'+
+      '<p class="muted">Add a separate entry for each discount code.</p>'+
+      (records.slice().sort(function(a,b){return a.name.localeCompare(b.name);}).map(function(record){
+        var id=esc(JSON.stringify(record.id));
+        return '<div class="card" style="overflow-wrap:anywhere"><b>'+esc(record.name)+'</b>'+
+          (record.code?'<div>Discount code: <strong>'+esc(record.code)+'</strong></div>':'')+
+          (record.notes?'<div class="muted" style="white-space:pre-wrap">'+esc(record.notes)+'</div>':'')+
+          '<div class="actions"><button onclick="supplierDiscountForm('+id+')">Edit</button>'+
+          '<button class="danger" onclick="del(&quot;suppliers&quot;,'+id+')">Delete</button></div></div>';
+      }).join('')||'<div class="empty">No suppliers saved yet.</div>');
+  }
+
+  window.supplierDiscountForm=function(id){
+    var record=(db.suppliers||[]).find(function(x){return x.id===id;})||{};
+    openModal(id?'Edit supplier':'Add supplier',
+      '<form onsubmit="saveSupplierDiscount('+esc(JSON.stringify(id||''))+');return false;">'+
+      '<label for="supplierName">Supplier name</label><input id="supplierName" required value="'+esc(record.name)+'">'+
+      '<label for="supplierCode">Discount code</label><input id="supplierCode" value="'+esc(record.code)+'" autocomplete="off" autocapitalize="none">'+
+      '<label for="supplierNotes">Notes (optional)</label><textarea id="supplierNotes">'+esc(record.notes)+'</textarea>'+
+      '<button class="primary" type="submit">Save supplier</button></form>');
+  };
+
+  window.saveSupplierDiscount=function(id){
+    var name=document.getElementById('supplierName').value.trim();
+    if(!name){alert('Enter a supplier name.');return;}
+    if(!Array.isArray(db.suppliers))db.suppliers=[];
+    var record={id:id||gid(),name:name,code:document.getElementById('supplierCode').value.trim(),
+      notes:document.getElementById('supplierNotes').value.trim()};
+    var index=db.suppliers.findIndex(function(x){return x.id===id;});
+    if(index<0)db.suppliers.push(record);else db.suppliers[index]=record;
+    save();closeM();render();
+  };
+
   // ----- integrate nav/dashboard -----
   window.render=function(){
     renderHeader();
-    var tabs=['Dashboard','Jobs','Quotes','Customers','Parts','Invoices','Settings'];
+    var tabs=['Dashboard','Jobs','Quotes','Customers','Parts','Suppliers','Invoices','Settings'];
     nav.innerHTML=tabs.map(function(x){return '<button class="'+(page===x?'on':'')+'" onclick="go(\''+x+'\')">'+x+'</button>';}).join('');
-    var views={Dashboard:dash,Jobs:jobs,Quotes:quotes,Customers:customers,Parts:parts,Invoices:invoices,Settings:settings};
+    var views={Dashboard:dash,Jobs:jobs,Quotes:quotes,Customers:customers,Parts:parts,Suppliers:supplierDiscounts,Invoices:invoices,Settings:settings};
     var fn=views[page]||dash;
     app.innerHTML=fn();
   };
@@ -4585,6 +4632,7 @@ window.cloudCancelRecoveryV4310=function(){
       '<div class="row wrap"><b>'+esc(j.title||'Untitled job')+'</b><span class="pill job-status-pill">'+esc(shownStatusV35(j))+'</span></div>'+
       '<div class="muted">'+esc(j.customer||'No customer')+' • '+esc(j.reg||'No reg')+' • Created '+esc(MMDate.format(j.date||''))+'</div>'+
       (j.bookedFor?'<div class="booked-date '+(j.bookedFor<MMDate.today()?'past-booking':'')+'">'+(j.bookedFor<MMDate.today()?'Past booking: ':'📅 Booked: ')+esc(formatDateV35(j.bookedFor))+'</div>':(j.status==='Booked'?'<div class="muted">📅 Booked — no appointment date set</div>':''))+
+      (j.mileage!=null?'<div class="muted">Mileage: '+esc(new Intl.NumberFormat('en-GB').format(j.mileage))+' miles</div>':'')+
       (j.hours?'<div class="muted">'+esc(j.hours)+'h labour = '+money(lab)+'</div>':'')+
       (ps.length?'<div class="muted">'+ps.length+' linked part'+(ps.length===1?'':'s')+'</div>':'')+
       '<div class="actions"><button onclick="jobForm(\''+j.id+'\')">Open</button><select class="quick-status" aria-label="Change job status" onchange="quickJobStatusV35(\''+j.id+'\',this.value)">'+statusOptionsV35(j.status||'Pending')+'</select><button class="primary" onclick="jobPartsMenu(\''+j.id+'\')">＋ Parts</button>'+
@@ -4731,15 +4779,71 @@ window.cloudCancelRecoveryV4310=function(){
     return '<div class="row"><div><h2 style="margin-bottom:2px">Jobs</h2><div class="muted">Move jobs between statuses and schedule booked work</div></div><button class="primary" onclick="jobForm()">＋ New</button></div><div class="job-filter-bar">'+filters.map(function(f){return '<button class="'+(window.jobStatusFilter===f?'on':'')+'" onclick="setJobFilterV34(\''+f+'\')">'+f+'</button>';}).join('')+'</div>'+(window.jobStatusFilter==='Booked'?calendarV35()+bookedAgendaV35():'')+(list.map(cardV35).join('')||'<div class="empty">No jobs in this status.</div>');
   };
 
+
+  var financeInterval='month',financeHistory='';
+  window.setFinanceInterval=function(value){financeInterval=value==='week'?'week':'month';financeHistory='';render();};
+  window.setFinanceHistory=function(value){financeHistory=value;render();};
+
+  function financePeriod(date){
+    if(financeInterval==='month'){
+      var month=date.slice(0,7);
+      return {key:month,label:new Intl.DateTimeFormat('en-GB',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(month+'-01T12:00:00Z'))};
+    }
+    var day=new Date(date+'T12:00:00Z');
+    day.setUTCDate(day.getUTCDate()-(day.getUTCDay()+6)%7);
+    var start=day.toISOString().slice(0,10);
+    day.setUTCDate(day.getUTCDate()+6);
+    return {key:start,label:MMDate.format(start)+' – '+MMDate.format(day.toISOString().slice(0,10))};
+  }
+
+  function financeDashboard(){
+    var current=financePeriod(MMDate.today()),periods=new Map(),undated=0;
+    db.invoices.forEach(function(invoice){
+      var date=MMDate.iso(invoice.date);
+      if(!date){undated++;return;}
+      var period=financePeriod(date);
+      if(!periods.has(period.key))periods.set(period.key,{label:period.label,revenue:0,cost:0,estimated:false,missing:false});
+      var totals=periods.get(period.key);
+      totals.revenue+=Number(invoice.total)||0;
+      var lines=Array.isArray(invoice.partLines)?invoice.partLines:[];
+      if(!lines.length&&Number(invoice.parts))totals.missing=true;
+      lines.forEach(function(line){
+        var unitCost=line.unitCost;
+        if(unitCost==null){
+          unitCost=db.parts.find(function(part){return part.id===line.partId;})?.cost;
+          if(unitCost!=null)totals.estimated=true;
+        }
+        if(unitCost==null||!Number.isFinite(Number(unitCost))){totals.missing=true;return;}
+        totals.cost+=Number(unitCost)*(Number(line.qty)||1);
+      });
+    });
+    var history=Array.from(periods.keys()).filter(function(key){return key<current.key;}).sort().reverse();
+    var selected=history.includes(financeHistory)?financeHistory:'';
+    var totals=periods.get(selected||current.key)||{revenue:0,cost:0};
+    return '<div class="card"><h2>Finances</h2>'+
+      '<div class="two"><div><label for="financeInterval">Show totals by</label><select id="financeInterval" onchange="setFinanceInterval(this.value)">'+
+      '<option value="month" '+(financeInterval==='month'?'selected':'')+'>Month</option>'+
+      '<option value="week" '+(financeInterval==='week'?'selected':'')+'>Week</option></select></div>'+
+      '<div><label for="financeHistory">Period / history</label><select id="financeHistory" onchange="setFinanceHistory(this.value)">'+
+      '<option value="">This '+financeInterval+' ('+esc(current.label)+')</option>'+
+      history.map(function(key){return '<option value="'+esc(key)+'" '+(selected===key?'selected':'')+'>'+esc(periods.get(key).label)+'</option>';}).join('')+
+      '</select></div></div><div class="grid">'+
+      '<div class="stat">Invoiced<b>'+money(totals.revenue)+'</b></div>'+
+      '<div class="stat">'+(totals.estimated||totals.missing?'Estimated profit':'Profit')+'<b>'+money(totals.revenue-totals.cost)+'</b></div></div>'+
+      '<p class="muted">Profit is invoiced sales less recorded parts costs on those invoices, grouped by invoice date.'+
+      (totals.estimated?' Some older invoices use current part costs.':'')+
+      (totals.missing?' Some parts costs are unavailable.':'')+
+      (undated?' Invoices without a valid date: '+undated+'.':'')+'</p></div>';
+  }
+
   window.dash=function(){
-    var rev=(db.invoices||[]).reduce(function(a,x){return a+Number(x.total||0);},0),cost=(db.parts||[]).reduce(function(a,x){return a+Number(x.cost||0);},0);
     var ready=(db.jobs||[]).filter(needsInvoiceV35),pending=(db.jobs||[]).filter(function(j){return j.status==='Pending';});
     var upcoming=(db.jobs||[]).filter(function(j){return j.status==='Booked'&&MMDate.iso(j.bookedFor)&&j.bookedFor>=MMDate.today();}).sort(function(a,b){return a.bookedFor.localeCompare(b.bookedFor);});
-    return '<div class="grid"><div class="card stat">Jobs<b>'+db.jobs.length+'</b></div><div class="card stat">Customers<b>'+db.customers.length+'</b></div><div class="card stat">Ready to Invoice<b>'+ready.length+'</b></div><div class="card stat">Booked<b>'+upcoming.length+'</b></div><div class="card stat">Invoiced<b>'+money(rev)+'</b></div><div class="card stat">Profit*<b>'+money(rev-cost)+'</b></div></div><div class="actions"><button class="primary" onclick="jobForm()">＋ New Job</button><button class="primary" onclick="quoteForm()">＋ Quote</button><button onclick="invoiceForm()">＋ Invoice</button></div>'+
+    return financeDashboard()+'<div class="grid"><div class="card stat">Jobs<b>'+db.jobs.length+'</b></div><div class="card stat">Customers<b>'+db.customers.length+'</b></div><div class="card stat">Ready to Invoice<b>'+ready.length+'</b></div><div class="card stat">Booked<b>'+upcoming.length+'</b></div></div><div class="actions"><button class="primary" onclick="jobForm()">＋ New Job</button><button class="primary" onclick="quoteForm()">＋ Quote</button><button onclick="invoiceForm()">＋ Invoice</button></div>'+
       (upcoming.length?'<div class="card"><div class="row"><b>Upcoming Bookings</b><button onclick="setJobFilterV34(\'Booked\');go(\'Jobs\')">Calendar</button></div>'+upcoming.slice(0,4).map(function(j){return '<div class="partline"><b>'+esc(formatDateV35(j.bookedFor))+'</b><div class="muted">'+esc(j.reg||'No reg')+' • '+esc(j.title||'Job')+'</div></div>';}).join('')+'</div>':'')+
       (ready.length?'<div class="card attention-card"><div class="row"><b class="attention-title">Ready to Invoice</b><button onclick="setJobFilterV34(\'Ready to Invoice\');go(\'Jobs\')">View all</button></div>'+ready.slice().reverse().map(cardV35).join('')+'</div>':'')+
       (pending.length?'<div class="card"><div class="row"><b>Pending Jobs</b><button onclick="setJobFilterV34(\'Pending\');go(\'Jobs\')">View all</button></div>'+pending.slice().reverse().slice(0,3).map(cardV35).join('')+'</div>':'')+
-      '<div class="card"><b>Recent jobs</b>'+(db.jobs||[]).slice().reverse().slice(0,5).map(cardV35).join('')+'</div><p class="muted">*Invoices minus recorded parts costs.</p>';
+      '<div class="card"><b>Recent jobs</b>'+(db.jobs||[]).slice().reverse().slice(0,5).map(cardV35).join('')+'</div>';
   };
 
   save();render();
@@ -4895,6 +4999,7 @@ window.cloudCancelRecoveryV4310=function(){
       '<label>Customer name</label><input id="jcmanual" value="'+esc(j.customer||'')+'"><label>Registration</label><input id="jr" value="'+esc(j.reg||'')+'">'+
       '<div class="vehicle-grid"><div><label>Make</label><input id="jmake" value="'+esc(j.make||'')+'"></div><div><label>Model</label><input id="jmodel" value="'+esc(j.model||'')+'"></div></div>'+
       '<label>Engine</label><input id="jengine" value="'+esc(j.engineSize||'')+'">'+
+      '<label for="jmileage">Mileage (miles, optional)</label><input id="jmileage" type="text" inputmode="numeric" value="'+esc(j.mileage??'')+'">'+
       '<div class="two"><div><label>Date Created</label><input id="jd" value="'+esc((function(v){var m=String(v||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?m[3]+'-'+m[2]+'-'+m[1]:(v||'');})(created))+'" placeholder="DD-MM-YYYY"></div><div><label>Booked For</label><input id="jbooked" value="'+esc((function(v){var m=String(v||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?m[3]+'-'+m[2]+'-'+m[1]:(v||'');})(j.bookedFor||''))+'" placeholder="DD-MM-YYYY"></div></div>'+
       '<label>Status</label><select id="js">'+['Pending','Booked','In progress','Complete','Invoiced','Paid','Cancelled'].map(function(s){return '<option value="'+s+'" '+(s===(j.status||'Pending')?'selected':'')+'>'+s+'</option>';}).join('')+'</select>'+
       '<label>Time spent (hours)</label><input id="jh" type="number" step="0.25" value="'+Number(j.hours||0)+'"><label>Location</label><input id="jl" value="'+esc(j.location||'')+'">'+
@@ -4917,6 +5022,12 @@ window.cloudCancelRecoveryV4310=function(){
     if(bm)booked=bm[3]+'-'+bm[2]+'-'+bm[1];
     var items=Array.from(document.querySelectorAll('.v41-inspection-row')).map(function(r){return {name:r.querySelector('.insp-name').value.trim(),status:r.querySelector('.insp-status').value,note:r.querySelector('.insp-note').value.trim()};}).filter(function(x){return x.name;});
     function val(id){var e=document.getElementById(id);return e?e.value:'';}
+    var mileage=val('jmileage').trim();
+    if(mileage&&(!/^\d+$/.test(mileage)||!Number.isSafeInteger(Number(mileage)))){
+      alert('Enter mileage as a whole number of miles, or leave it blank.');
+      document.getElementById('jmileage').focus();
+      return;
+    }
     var rawCreated=val('jd').trim(),createdIso=rawCreated,cm=rawCreated.match(/^(\d{2})-(\d{2})-(\d{4})$/);if(cm)createdIso=cm[3]+'-'+cm[2]+'-'+cm[1];
     var pending=((window.v41PendingPhotos||{})[id||'new']||[]);
     var jobId=id||gid(),prepared=[];
@@ -4935,7 +5046,7 @@ window.cloudCancelRecoveryV4310=function(){
         return;
       }
     }
-    var x={...old,id:jobId,title:val('jt'),jobType:val('jtype')||'Repair / Service',customer:val('jcmanual'),reg:val('jr'),make:val('jmake'),model:val('jmodel'),engineSize:val('jengine'),date:createdIso,bookedFor:booked,status:val('js')||'Pending',location:val('jl'),notes:val('jn'),hours:Number(val('jh')||0),partIds:old.partIds||[],partQuantities:old.partQuantities||{},photos:(old.photos||[]).concat(prepared),diagOutcome:val('jdiagOutcome'),findings:val('jfindings'),recommendations:val('jrecommend'),inspectionItems:items};
+    var x={...old,id:jobId,title:val('jt'),jobType:val('jtype')||'Repair / Service',customer:val('jcmanual'),reg:val('jr'),make:val('jmake'),model:val('jmodel'),engineSize:val('jengine'),mileage:mileage===''?null:Number(mileage),date:createdIso,bookedFor:booked,status:val('js')||'Pending',location:val('jl'),notes:val('jn'),hours:Number(val('jh')||0),partIds:old.partIds||[],partQuantities:old.partQuantities||{},photos:(old.photos||[]).concat(prepared),diagOutcome:val('jdiagOutcome'),findings:val('jfindings'),recommendations:val('jrecommend'),inspectionItems:items};
     var i=db.jobs.findIndex(function(y){return y.id===x.id;});if(i<0)db.jobs.push(x);else db.jobs[i]=x;
     try{
       save();
@@ -4962,7 +5073,7 @@ window.cloudCancelRecoveryV4310=function(){
     recalcInvoiceLabour();var jobId=ivjob.value||'',j=db.jobs.find(function(x){return x.id===jobId;})||null,c=(db.customers||[]).find(function(x){return x.name===ivc.value;})||{};
     var partLines=(typeof invoicePartSnapshot==='function')?invoicePartSnapshot(j):[],partTotal=partLines.reduce(function(a,x){return a+Number(x.total||0);},0);
     var total=Number(ivl.value||0)+partTotal+Number(ivt.value||0)+Number(ivo.value||0),isPaid=ivpaid.value==='true';
-    db.invoices.push({id:gid(),number:ivn.value,customer:ivc.value,customerId:c.id||'',email:ive.value,billedTo:{name:ivc.value,phone:c.phone||'',email:ive.value||c.email||'',address:c.address||''},date:ivd.value,jobId:jobId,hours:Number(ivhours.value||0),labour:Number(ivl.value||0),partLines:partLines,parts:partTotal,travel:Number(ivt.value||0),other:Number(ivo.value||0),total:total,paid:isPaid,paymentMethod:ivmethod.value,paymentDate:ivpaydate.value});
+    db.invoices.push({id:gid(),number:ivn.value,customer:ivc.value,customerId:c.id||'',email:ive.value,billedTo:{name:ivc.value,phone:c.phone||'',email:ive.value||c.email||'',address:c.address||''},date:ivd.value,jobId:jobId,mileage:j?.mileage??null,hours:Number(ivhours.value||0),labour:Number(ivl.value||0),partLines:partLines,parts:partTotal,travel:Number(ivt.value||0),other:Number(ivo.value||0),total:total,paid:isPaid,paymentMethod:ivmethod.value,paymentDate:ivpaydate.value});
     if(j)j.hours=Number(ivhours.value||0);if(typeof syncJobPaymentStatus==='function')syncJobPaymentStatus(jobId);save();closeM();render();
   };
 

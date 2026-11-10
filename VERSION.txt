@@ -1,2 +1,2 @@
-Mechanic Mate v44.8
-Native British English spellcheck for free text; identifiers and technical fields excluded.
+Mechanic Mate v44.9
+Supplier discount codes, weekly and monthly dashboard history, and job mileage on invoices.
